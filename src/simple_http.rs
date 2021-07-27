@@ -1,25 +1,15 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::error::Error as StdError;
-use std::iter::FromIterator;
-use std::pin::Pin;
 use std::result::Result as StdResult;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
-use std::task::{Context, Poll};
 use std::time::Duration;
 
-use futures::Future;
 use http::method::Method;
 // use futures::TryStreamExt;
-use hyper::client::{connect::Connect, HttpConnector, ResponseFuture};
-use hyper::{body, body::HttpBody};
-use hyper::{Body, Client, Error, Request, Response, Result, Uri};
-use tokio::time::Timeout;
-use url::Url;
+use hyper::body::HttpBody;
+use hyper::client::{connect::Connect, HttpConnector};
+use hyper::{Body, Client, Request, Response, Result, Uri};
 
-use fp_rust;
+// use fp_rust;
 
 const DEFAULT_TIMEOUT_MILLISECOND: u64 = 30 * 1000;
 

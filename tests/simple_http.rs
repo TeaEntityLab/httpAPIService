@@ -18,9 +18,9 @@ async fn test_get_header() {
     use std::net::SocketAddr;
     use std::sync::Arc;
 
-    use futures::executor::block_on;
+    // use futures::executor::block_on;
     use hyper::service::{make_service_fn, service_fn};
-    use hyper::{Body, Client, Method, Request, Response, Server};
+    use hyper::{body, Body, Method, Request, Response, Server};
     use tokio::sync::Notify;
     use tokio::time::{sleep, Duration};
 
@@ -36,12 +36,10 @@ async fn test_get_header() {
     let started_latch_for_thread = started_latch.clone();
     let hyper_latch_for_thread = hyper_latch.clone();
 
-    static TEXT: &str = "Hello, World!";
-
     let server = Server::bind(&addr).serve(make_service_fn(move |_| {
         let started_latch_for_thread_2 = started_latch_for_thread.clone();
         async {
-            Ok::<_, hyper::Error>(service_fn(move |mut req: Request<Body>| {
+            Ok::<_, hyper::Error>(service_fn(move |req: Request<Body>| {
                 let started_latch_for_thread_3 = started_latch_for_thread_2.clone();
 
                 async move {
@@ -51,7 +49,14 @@ async fn test_get_header() {
 
                     started_latch_for_thread_3.countdown();
 
-                    let response = Response::new(Body::from(TEXT));
+                    let (parts, body_instance) = req.into_parts();
+
+                    let bytes = body::to_bytes(body_instance).await?;
+                    let parts_str = String::from(format!("{:?}", parts));
+                    let body_str =
+                        String::from_utf8(bytes.to_vec()).expect("response was not valid utf-8");
+
+                    let response = Response::new(Body::from(body_str + parts_str.as_str()));
                     Ok::<Response<Body>, hyper::Error>(response)
                 }
             }))
@@ -96,11 +101,17 @@ async fn test_get_header() {
         .unwrap();
 
     println!("{:?}", request);
-    let resp = simple_http.request(request).await;
-    let resp_ref = resp.as_ref();
-    let err = resp_ref.err();
+    let resp = simple_http.request(request).await.ok().unwrap();
+    let err = resp.as_ref().err();
     println!("{:?}", err);
-    assert_eq!(false, resp_ref.is_err());
+    assert_eq!(false, resp.is_err());
+
+    let mut body_instance = resp.ok().unwrap();
+    let body_instance = body_instance.body_mut();
+    let bytes = body::to_bytes(body_instance).await.ok().unwrap();
+    let body_str = String::from_utf8(bytes.to_vec()).expect("response was not valid utf-8");
+
+    assert_eq!("{\"library\":\"hyper\"}Parts { method: POST, uri: /, version: HTTP/1.1, headers: {\"content-type\": \"application/json\", \"host\": \"127.0.0.1:3000\", \"content-length\": \"19\"} }", body_str);
 
     started_latch.wait();
     println!("REQ",);
