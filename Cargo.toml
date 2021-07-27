@@ -1,0 +1,39 @@
+[package]
+name = "hyper_api_service"
+version = "0.1.0"
+license = "MIT"
+authors = ["JunYi JohnTeee Lee <johnteee@gmail.com>"]
+edition = "2018"
+include = ["src/**/*.rs", "Cargo.toml"]
+readme = "README.md"
+description = "A Retrofit inspired implementation for Rust."
+documentation = "https://docs.rs/hyper_api_service/"
+homepage = "https://github.com/TeaEntityLab/hyperAPIService"
+repository = "https://github.com/TeaEntityLab/hyperAPIService"
+keywords = ["retrofit","http","service","api","binding","async","hyper"]
+
+[badges.maintenance]
+status = "actively-developed"
+
+[lib]
+name = "hyper_api_service"
+path = "src/lib.rs"
+
+[features]
+default = [
+]
+runtime = []
+
+[dependencies]
+fp_rust="^0.1.40"
+
+hyper = { version = "^0.14.0", features = ["full"] }
+tokio = { version = "^1.8.0", features = ["full"] }
+http = "^0.2.4"
+futures="^0.3.0"
+url="^2.2.0"
+
+[[test]]
+name = "simple_http"
+path = "tests/simple_http.rs"
+required-features = ["default"]
