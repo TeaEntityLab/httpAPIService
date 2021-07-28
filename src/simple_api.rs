@@ -3,10 +3,10 @@ use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::result::Result as StdResult;
 use std::str::FromStr;
+use std::sync::Arc;
 
 #[cfg(feature = "multipart")]
 use formdata::FormData;
-use futures::Future;
 use http::method::Method;
 use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, HttpConnector};
@@ -15,60 +15,287 @@ use hyper::{Body, HeaderMap, Request, Uri};
 use url::Url;
 
 use super::simple_http;
-use super::simple_http::{SimpleHTTP, SimpleHTTPResponse};
+use super::simple_http::SimpleHTTP;
 // use simple_http;
 
 // PathParam Path params for API usages
 type PathParam = HashMap<String, Box<dyn Debug>>;
 
-// APINoBody API without request body options
-trait APINoBody<T>: FnMut(PathParam, &mut T) -> dyn Future<Output = SimpleHTTPResponse>
-where
-    Self: std::marker::Sized,
-{
+pub struct CommonAPI<C, B = Body> {
+    pub simple_api: Arc<SimpleAPI<C, B>>,
 }
 
-// APIHasBody API with request body options
-trait APIHasBody<T, B = Body>:
-    FnMut(PathParam, B, &mut T) -> dyn Future<Output = SimpleHTTPResponse>
-where
-    Self: std::marker::Sized,
-{
+impl<C, B> CommonAPI<C, B> {
+    pub fn new_with_options(simple_api: Arc<SimpleAPI<C, B>>) -> Self {
+        CommonAPI { simple_api }
+    }
+}
+
+impl CommonAPI<HttpConnector, Body> {
+    /// Create a new CommonAPI with a Client with the default [config](Builder).
+    ///
+    /// # Note
+    ///
+    /// The default connector does **not** handle TLS. Speaking to `https`
+    /// destinations will require [configuring a connector that implements
+    /// TLS](https://hyper.rs/guides/client/configuration).
+    #[inline]
+    pub fn new() -> CommonAPI<HttpConnector, Body> {
+        return CommonAPI::new_with_options(Arc::new(SimpleAPI::new()));
+    }
+}
+
+impl<C> CommonAPI<C, Body> {
+    pub fn make_api_response_only<R>(
+        &self,
+        method: Method,
+        relative_url: String,
+        response_deserializer: Arc<dyn BodyDeserializer<R, Body>>,
+    ) -> APIResponseOnly<R, C, Body> {
+        APIResponseOnly {
+            0: self.make_api_no_body(method, relative_url, response_deserializer),
+        }
+    }
+    pub fn make_api_no_body<R>(
+        &self,
+        method: Method,
+        relative_url: String,
+        response_deserializer: Arc<dyn BodyDeserializer<R, Body>>,
+    ) -> APINoBody<R, C, Body> {
+        APINoBody {
+            base: CommonAPI {
+                simple_api: self.simple_api.clone(),
+            },
+            method,
+            relative_url,
+            response_deserializer,
+            content_type: "".to_string(),
+        }
+    }
+    pub fn make_api_has_body<T, R>(
+        &self,
+        method: Method,
+        relative_url: String,
+        content_type: String,
+        request_serializer: Arc<dyn BodySerializer<T, Body>>,
+        response_deserializer: Arc<dyn BodyDeserializer<R, Body>>,
+    ) -> APIHasBody<T, R, C, Body> {
+        APIHasBody {
+            base: CommonAPI {
+                simple_api: self.simple_api.clone(),
+            },
+            method,
+            relative_url,
+            content_type,
+            request_serializer,
+            response_deserializer,
+        }
+    }
+    #[cfg(feature = "multipart")]
+    pub fn make_api_multipart<R>(
+        &self,
+        method: Method,
+        relative_url: String,
+        request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
+        response_deserializer: Arc<dyn BodyDeserializer<R, Body>>,
+    ) -> APIMultipart<FormData, R, C, Body> {
+        APIMultipart {
+            base: CommonAPI {
+                simple_api: self.simple_api.clone(),
+            },
+            method,
+            relative_url,
+            request_serializer,
+            response_deserializer,
+        }
+    }
 }
 
 // APIResponseOnly API with only response options
-trait APIResponseOnly<T>: FnMut(&mut T) -> dyn Future<Output = SimpleHTTPResponse>
+pub struct APIResponseOnly<R, C, B = Body>(APINoBody<R, C, B>);
+impl<R, C> APIResponseOnly<R, C, Body>
 where
-    Self: std::marker::Sized,
+    C: Connect + Clone + Send + Sync + 'static,
+    // B: HttpBody + Send + 'static,
+    // B::Data: Send,
+    // B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
+    pub async fn call(&self, target: Box<R>) -> StdResult<Box<R>, Box<dyn StdError>>
+    where
+        Body: Default,
+    {
+        self.0.call(HashMap::new(), target).await
+    }
+}
+
+// APINoBody API without request body options
+pub struct APINoBody<R, C, B = Body> {
+    base: CommonAPI<C, B>,
+    pub method: Method,
+    pub relative_url: String,
+    pub content_type: String,
+
+    pub response_deserializer: Arc<dyn BodyDeserializer<R, B>>,
+}
+impl<R, C> APINoBody<R, C, Body>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+    // B: HttpBody + Send + 'static,
+    // B::Data: Send,
+    // B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    pub async fn call(
+        &self,
+        path_param: PathParam,
+        mut target: Box<R>,
+    ) -> StdResult<Box<R>, Box<dyn StdError>>
+    where
+        Body: Default,
+    {
+        let req = self.base.simple_api.make_request(
+            self.method.clone(),
+            self.relative_url.clone(),
+            self.content_type.clone(),
+            path_param,
+            Body::default(),
+        )?;
+
+        let body = self
+            .base
+            .simple_api
+            .simple_http
+            .request(req)
+            .await??
+            .into_body();
+        // let mut target = Box::new(target);
+        let body = Box::new(body);
+        self.response_deserializer
+            .decode(body.as_ref(), target.as_mut())?;
+
+        Ok(target)
+    }
+}
+
+// APIHasBody API with request body options
+pub struct APIHasBody<T, R, C, B = Body> {
+    base: CommonAPI<C, B>,
+    pub method: Method,
+    pub relative_url: String,
+    pub content_type: String,
+
+    pub request_serializer: Arc<dyn BodySerializer<T, B>>,
+    pub response_deserializer: Arc<dyn BodyDeserializer<R, B>>,
+}
+impl<T, R, C> APIHasBody<T, R, C, Body>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+    // B: HttpBody + Send + 'static,
+    // B::Data: Send,
+    // B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    pub async fn call(
+        &self,
+        path_param: PathParam,
+        sent_body: Box<T>,
+        mut target: Box<R>,
+    ) -> StdResult<Box<R>, Box<dyn StdError>>
+    where
+        Body: Default,
+    {
+        // let mut sent_body = Box::new(sent_body);
+        let req = self.base.simple_api.make_request(
+            self.method.clone(),
+            self.relative_url.clone(),
+            self.content_type.clone(),
+            path_param,
+            self.request_serializer.encode(sent_body.as_ref())?,
+        )?;
+
+        let body = self
+            .base
+            .simple_api
+            .simple_http
+            .request(req)
+            .await??
+            .into_body();
+        // let mut target = Box::new(target);
+        let body = Box::new(body);
+        self.response_deserializer
+            .decode(body.as_ref(), target.as_mut())?;
+
+        Ok(target)
+    }
+}
+
+// APIMultipart API with request body options
+pub struct APIMultipart<T, R, C, B = Body> {
+    base: CommonAPI<C, B>,
+    pub method: Method,
+    pub relative_url: String,
+    // pub content_type: String,
+    pub request_serializer: Arc<dyn BodySerializer<T, (String, B)>>,
+    pub response_deserializer: Arc<dyn BodyDeserializer<R, B>>,
+}
+impl<T, R, C> APIMultipart<T, R, C, Body>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+    // B: HttpBody + Send + 'static,
+    // B::Data: Send,
+    // B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    pub async fn call(
+        &self,
+        path_param: PathParam,
+        sent_body: Box<T>,
+        mut target: Box<R>,
+    ) -> StdResult<Box<R>, Box<dyn StdError>>
+    where
+        Body: Default,
+    {
+        // let mut sent_body = Box::new(sent_body);
+        let (boundary, sent_body) = self.request_serializer.encode(sent_body.as_ref())?;
+        let req = self.base.simple_api.make_request(
+            self.method.clone(),
+            self.relative_url.clone(),
+            boundary,
+            path_param,
+            sent_body,
+        )?;
+
+        let body = self
+            .base
+            .simple_api
+            .simple_http
+            .request(req)
+            .await??
+            .into_body();
+        // let mut target = Box::new(target);
+        let body = Box::new(body);
+        self.response_deserializer
+            .decode(body.as_ref(), target.as_mut())?;
+
+        Ok(target)
+    }
 }
 
 // BodySerializer Serialize the body (for put/post/patch etc)
-trait BodySerializer<T, B = Body>: FnMut(&mut T) -> StdResult<B, Box<dyn StdError>>
-where
-    Self: std::marker::Sized,
-{
+pub trait BodySerializer<T, B = Body> {
+    fn encode(&self, origin: &T) -> StdResult<B, Box<dyn StdError>>;
 }
-
 // BodyDeserializer Deserialize the body (for response)
-trait BodyDeserializer<T, B = Body>: FnMut(B, &mut T) -> StdResult<T, Box<dyn StdError>>
-where
-    Self: std::marker::Sized,
-{
+pub trait BodyDeserializer<R, B = Body> {
+    fn decode(&self, body: &B, target: &mut R) -> StdResult<(), Box<dyn StdError>>;
 }
 
-#[cfg(feature = "multipart")]
-// MultipartSerializer Serialize the multipart body (for put/post/patch etc)
-type MultipartSerializer<B = Body> = dyn FnMut(&mut FormData) -> StdResult<B, dyn StdError>;
+// #[cfg(feature = "multipart")]
+// // MultipartSerializer Serialize the multipart body (for put/post/patch etc)
+// type MultipartSerializer<B = Body> = dyn FnMut(&mut FormData) -> StdResult<B, dyn StdError>;
 
 // SimpleAPI SimpleAPI inspired by Retrofits
 pub struct SimpleAPI<C, B = Body> {
     pub simple_http: SimpleHTTP<C, B>,
     pub base_url: Url,
     pub default_header: HeaderMap,
-    // RequestSerializerForMultipart: MultipartSerializer,
-    // RequestSerializerForJSON:      BodySerializer,
-    // ResponseDeserializer:          BodyDeserializer,
 }
 
 impl<C, B> SimpleAPI<C, B> {

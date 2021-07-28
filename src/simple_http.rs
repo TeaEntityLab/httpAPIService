@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use http::method::Method;
 // use futures::TryStreamExt;
-use hyper::body::HttpBody;
+// use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::CONTENT_TYPE;
 use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
@@ -28,7 +28,7 @@ pub trait Interceptor<B> {
     fn intercept(&self, request: &mut Request<B>) -> StdResult<(), Box<dyn StdError>>;
 }
 
-pub type SimpleHTTPResponse = StdResult<Result<Response<Body>>, Box<dyn StdError>>;
+pub type SimpleHTTPResponse<B> = StdResult<Result<Response<B>>, Box<dyn StdError>>;
 
 // SimpleHTTP SimpleHTTP inspired by Retrofits
 pub struct SimpleHTTP<C, B = Body> {
@@ -161,14 +161,14 @@ pub async fn multer_multipart_to_hash_map(
     Ok(result)
 }
 
-impl<C, B> SimpleHTTP<C, B>
+impl<C> SimpleHTTP<C, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
-    B: HttpBody + Send + 'static,
-    B::Data: Send,
-    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    // B: HttpBody + Send + 'static,
+    // B::Data: Send,
+    // B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
-    pub async fn request(&self, mut request: Request<B>) -> SimpleHTTPResponse {
+    pub async fn request(&self, mut request: Request<Body>) -> SimpleHTTPResponse<Body> {
         for interceptor in &mut self.interceptors.iter() {
             interceptor.intercept(&mut request)?;
         }
@@ -189,67 +189,67 @@ where
         }
     }
 
-    pub async fn get(&self, uri: Uri) -> SimpleHTTPResponse
+    pub async fn get(&self, uri: Uri) -> SimpleHTTPResponse<Body>
     where
-        B: Default,
+        Body: Default,
     {
-        let mut req = Request::new(B::default());
+        let mut req = Request::new(Body::default());
         *req.uri_mut() = uri;
         self.request(req).await
     }
-    pub async fn head(&self, uri: Uri) -> SimpleHTTPResponse
+    pub async fn head(&self, uri: Uri) -> SimpleHTTPResponse<Body>
     where
-        B: Default,
+        Body: Default,
     {
-        let mut req = Request::new(B::default());
+        let mut req = Request::new(Body::default());
         *req.uri_mut() = uri;
         *req.method_mut() = Method::HEAD;
         self.request(req).await
     }
-    pub async fn option(&self, uri: Uri) -> SimpleHTTPResponse
+    pub async fn option(&self, uri: Uri) -> SimpleHTTPResponse<Body>
     where
-        B: Default,
+        Body: Default,
     {
-        let mut req = Request::new(B::default());
+        let mut req = Request::new(Body::default());
         *req.uri_mut() = uri;
         *req.method_mut() = Method::OPTIONS;
         self.request(req).await
     }
-    pub async fn delete(&self, uri: Uri) -> SimpleHTTPResponse
+    pub async fn delete(&self, uri: Uri) -> SimpleHTTPResponse<Body>
     where
-        B: Default,
+        Body: Default,
     {
-        let mut req = Request::new(B::default());
+        let mut req = Request::new(Body::default());
         *req.uri_mut() = uri;
         *req.method_mut() = Method::DELETE;
         self.request(req).await
     }
 
-    pub async fn post(&self, uri: Uri, body: B) -> SimpleHTTPResponse
+    pub async fn post(&self, uri: Uri, body: Body) -> SimpleHTTPResponse<Body>
     where
-        B: Default,
+        Body: Default,
     {
-        let mut req = Request::new(B::default());
+        let mut req = Request::new(Body::default());
         *req.uri_mut() = uri;
         *req.method_mut() = Method::POST;
         *req.body_mut() = body;
         self.request(req).await
     }
-    pub async fn put(&self, uri: Uri, body: B) -> SimpleHTTPResponse
+    pub async fn put(&self, uri: Uri, body: Body) -> SimpleHTTPResponse<Body>
     where
-        B: Default,
+        Body: Default,
     {
-        let mut req = Request::new(B::default());
+        let mut req = Request::new(Body::default());
         *req.uri_mut() = uri;
         *req.method_mut() = Method::PUT;
         *req.body_mut() = body;
         self.request(req).await
     }
-    pub async fn patch(&self, uri: Uri, body: B) -> SimpleHTTPResponse
+    pub async fn patch(&self, uri: Uri, body: Body) -> SimpleHTTPResponse<Body>
     where
-        B: Default,
+        Body: Default,
     {
-        let mut req = Request::new(B::default());
+        let mut req = Request::new(Body::default());
         *req.uri_mut() = uri;
         *req.method_mut() = Method::PATCH;
         *req.body_mut() = body;
