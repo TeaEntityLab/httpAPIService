@@ -17,22 +17,22 @@ pub trait Interceptor<B> {
     fn intercept(&self, request: &mut Request<B>) -> StdResult<(), Box<dyn StdError>>;
 }
 
-type SimpleHTTPResponse = StdResult<Result<Response<Body>>, Box<dyn StdError>>;
+pub type SimpleHTTPResponse = StdResult<Result<Response<Body>>, Box<dyn StdError>>;
 
-// SimpleHTTPDef SimpleHTTP inspired by Retrofits
-pub struct SimpleHTTPDef<C, B = Body> {
+// SimpleHTTP SimpleHTTP inspired by Retrofits
+pub struct SimpleHTTP<C, B = Body> {
     pub client: Client<C, B>,
     pub interceptors: VecDeque<Box<dyn Interceptor<B>>>,
     pub timeout_millisecond: u64,
 }
 
-impl<C, B> SimpleHTTPDef<C, B> {
+impl<C, B> SimpleHTTP<C, B> {
     pub fn new_with_options(
         client: Client<C, B>,
         interceptors: VecDeque<Box<dyn Interceptor<B>>>,
         timeout_millisecond: u64,
     ) -> Self {
-        SimpleHTTPDef {
+        SimpleHTTP {
             client,
             interceptors,
             timeout_millisecond,
@@ -40,8 +40,8 @@ impl<C, B> SimpleHTTPDef<C, B> {
     }
 }
 
-impl SimpleHTTPDef<HttpConnector, Body> {
-    /// Create a new SimpleHTTPDef with a Client with the default [config](Builder).
+impl SimpleHTTP<HttpConnector, Body> {
+    /// Create a new SimpleHTTP with a Client with the default [config](Builder).
     ///
     /// # Note
     ///
@@ -49,29 +49,29 @@ impl SimpleHTTPDef<HttpConnector, Body> {
     /// destinations will require [configuring a connector that implements
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[inline]
-    pub fn new() -> SimpleHTTPDef<HttpConnector, Body> {
-        return SimpleHTTPDef::new_with_options(
+    pub fn new() -> SimpleHTTP<HttpConnector, Body> {
+        return SimpleHTTP::new_with_options(
             Client::new(),
             VecDeque::new(),
             DEFAULT_TIMEOUT_MILLISECOND,
         );
     }
 }
-impl Default for SimpleHTTPDef<HttpConnector, Body> {
-    fn default() -> SimpleHTTPDef<HttpConnector, Body> {
-        SimpleHTTPDef::new()
+impl Default for SimpleHTTP<HttpConnector, Body> {
+    fn default() -> SimpleHTTP<HttpConnector, Body> {
+        SimpleHTTP::new()
     }
 }
 
-impl<C, B> SimpleHTTPDef<C, B>
+impl<C, B> SimpleHTTP<C, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
-    pub async fn request(&mut self, mut request: Request<B>) -> SimpleHTTPResponse {
-        for interceptor in &mut self.interceptors.iter_mut() {
+    pub async fn request(&self, mut request: Request<B>) -> SimpleHTTPResponse {
+        for interceptor in &mut self.interceptors.iter() {
             interceptor.intercept(&mut request)?;
         }
 
@@ -91,7 +91,7 @@ where
         }
     }
 
-    pub async fn get(&mut self, uri: Uri) -> SimpleHTTPResponse
+    pub async fn get(&self, uri: Uri) -> SimpleHTTPResponse
     where
         B: Default,
     {
@@ -99,7 +99,7 @@ where
         *req.uri_mut() = uri;
         self.request(req).await
     }
-    pub async fn head(&mut self, uri: Uri) -> SimpleHTTPResponse
+    pub async fn head(&self, uri: Uri) -> SimpleHTTPResponse
     where
         B: Default,
     {
@@ -108,7 +108,7 @@ where
         *req.method_mut() = Method::HEAD;
         self.request(req).await
     }
-    pub async fn option(&mut self, uri: Uri) -> SimpleHTTPResponse
+    pub async fn option(&self, uri: Uri) -> SimpleHTTPResponse
     where
         B: Default,
     {
@@ -117,7 +117,7 @@ where
         *req.method_mut() = Method::OPTIONS;
         self.request(req).await
     }
-    pub async fn delete(&mut self, uri: Uri) -> SimpleHTTPResponse
+    pub async fn delete(&self, uri: Uri) -> SimpleHTTPResponse
     where
         B: Default,
     {
@@ -127,7 +127,7 @@ where
         self.request(req).await
     }
 
-    pub async fn post(&mut self, uri: Uri, body: B) -> SimpleHTTPResponse
+    pub async fn post(&self, uri: Uri, body: B) -> SimpleHTTPResponse
     where
         B: Default,
     {
@@ -137,7 +137,7 @@ where
         *req.body_mut() = body;
         self.request(req).await
     }
-    pub async fn put(&mut self, uri: Uri, body: B) -> SimpleHTTPResponse
+    pub async fn put(&self, uri: Uri, body: B) -> SimpleHTTPResponse
     where
         B: Default,
     {
@@ -147,7 +147,7 @@ where
         *req.body_mut() = body;
         self.request(req).await
     }
-    pub async fn patch(&mut self, uri: Uri, body: B) -> SimpleHTTPResponse
+    pub async fn patch(&self, uri: Uri, body: B) -> SimpleHTTPResponse
     where
         B: Default,
     {

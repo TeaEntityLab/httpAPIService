@@ -26,7 +26,7 @@ async fn test_get_header() {
 
     use fp_rust::sync::CountDownLatch;
     // use hyper_api_service::blocking_future;
-    use hyper_api_service::simple_http::SimpleHTTPDef;
+    use hyper_api_service::simple_http::SimpleHTTP;
 
     let hyper_latch = Arc::new(Notify::new());
     let started_latch = CountDownLatch::new(1);
@@ -91,7 +91,7 @@ async fn test_get_header() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let mut simple_http = SimpleHTTPDef::new();
+    let simple_http = SimpleHTTP::new();
     let request = Request::builder()
         .method(Method::POST)
         .uri("http://".to_string() + &addr.to_string())
