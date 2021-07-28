@@ -23,15 +23,19 @@ path = "src/lib.rs"
 default = [
   "multipart"
 ]
-runtime = []
-multipart = [ "formdata" ]
+runtime = [ "multipart" ]
+no_multipart = []
+multipart = [ "formdata", "multer", "bytes", "mime" ]
 
 [dependencies]
 fp_rust="^0.1.40"
 
 hyper = { version = "^0.14.0", features = ["full"] }
 tokio = { version = "^1.8.0", features = ["full"] }
+multer = { version = "^2.0.0", optional = true }
 formdata = { version = "^0.13.0", optional = true }
+mime = { version = "^0.3.0", optional = true }
+bytes = { version = "^1.0.0", optional = true }
 http = "^0.2.4"
 futures="^0.3.0"
 url="^2.2.0"
@@ -39,4 +43,4 @@ url="^2.2.0"
 [[test]]
 name = "simple_http"
 path = "tests/simple_http.rs"
-required-features = ["default"]
+required-features = ["runtime"]

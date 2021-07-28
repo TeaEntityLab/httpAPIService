@@ -3,6 +3,10 @@ extern crate formdata;
 extern crate futures;
 extern crate http;
 extern crate hyper;
+#[cfg(feature = "multipart")]
+extern crate mime;
+#[cfg(feature = "multipart")]
+extern crate multer;
 extern crate tokio;
 extern crate url;
 

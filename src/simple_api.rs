@@ -1,9 +1,8 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::error::Error as StdError;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::result::Result as StdResult;
 use std::str::FromStr;
-use std::time::Duration;
 
 #[cfg(feature = "multipart")]
 use formdata::FormData;
@@ -11,10 +10,11 @@ use futures::Future;
 use http::method::Method;
 use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, HttpConnector};
-use hyper::header::HeaderValue;
-use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
+use hyper::header::{HeaderValue, CONTENT_TYPE};
+use hyper::{Body, HeaderMap, Request, Uri};
 use url::Url;
 
+use super::simple_http;
 use super::simple_http::{SimpleHTTP, SimpleHTTPResponse};
 // use simple_http;
 
@@ -110,8 +110,8 @@ where
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
-    pub fn make_request<T>(
-        &mut self,
+    pub fn make_request(
+        &self,
         method: Method,
         relative_url: String,
         content_type: String,
@@ -136,13 +136,38 @@ where
         // Header
         *req.headers_mut() = self.default_header.clone();
         if !content_type.is_empty() {
-            req.headers_mut().insert(
-                "Content-Type",
-                HeaderValue::from_str(content_type.as_str())?,
-            );
+            req.headers_mut()
+                .insert(CONTENT_TYPE, HeaderValue::from_str(content_type.as_str())?);
         }
 
         Ok(req)
+    }
+}
+impl<C> SimpleAPI<C, Body>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+{
+    #[cfg(feature = "multipart")]
+    pub fn make_request_multipart(
+        &self,
+        method: Method,
+        relative_url: String,
+        // content_type: String,
+        path_param: PathParam,
+        body: FormData,
+    ) -> StdResult<Request<Body>, Box<dyn StdError>> {
+        let (body, boundary) = simple_http::body_from_multipart(body)?;
+        self.make_request(
+            method,
+            relative_url,
+            // if content_type.is_empty() {
+            simple_http::get_content_type_from_multipart_boundary(boundary)?,
+            // } else {
+            //     content_type
+            // },
+            path_param,
+            body,
+        )
     }
 }
 
