@@ -17,7 +17,7 @@ async fn test_simple_api_common() {
     use hyper::{body, Body, Method, Request, Response, Server};
     use serde::{Deserialize, Serialize};
     use tokio::sync::Notify;
-    use tokio::time::{sleep, Duration};
+    // use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::simple_api;
@@ -27,6 +27,15 @@ async fn test_simple_api_common() {
         name: String,
         age: String,
         meta: Option<String>,
+    }
+    impl Default for Product {
+        fn default() -> Self {
+            return Product {
+                name: "".to_string(),
+                age: "".to_string(),
+                meta: None,
+            };
+        }
     }
 
     let hyper_latch = Arc::new(Notify::new());
@@ -95,7 +104,7 @@ async fn test_simple_api_common() {
             .await;
     });
 
-    sleep(Duration::from_millis(200)).await;
+    // sleep(Duration::from_millis(20)).await;
 
     /*
     let mut req = connect(&addr).unwrap();
@@ -121,18 +130,18 @@ async fn test_simple_api_common() {
 
     let json_serializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_SERIALIZER);
     let json_deserializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_DESERIALIZER);
+    let return_type_marker = &Product::default();
 
     // GET make_api_response_only
     {
-        let api_get_products =
-            common_api.make_api_response_only(Method::GET, "/products", json_deserializer.clone());
+        let api_get_products = common_api.make_api_response_only(
+            Method::GET,
+            "/products",
+            json_deserializer.clone(),
+            return_type_marker,
+        );
 
-        let response_target = Box::new(Product {
-            name: "Baxter".to_string(),
-            age: "1 month".to_string(),
-            meta: None,
-        });
-        let resp = api_get_products.call(response_target).await;
+        let resp = api_get_products.call().await;
         let err = resp.as_ref().err();
         println!("{:?}", err);
         assert_eq!(false, resp.is_err());
@@ -150,19 +159,15 @@ async fn test_simple_api_common() {
             Method::DELETE,
             "/products/{id}",
             json_deserializer.clone(),
+            return_type_marker,
         );
 
-        let response_target = Box::new(Product {
-            name: "Baxter".to_string(),
-            age: "1 month".to_string(),
-            meta: None,
-        });
         let path_param = [("id".into(), "3".into())]
             .iter()
             .cloned()
             .collect::<simple_api::PathParam>();
 
-        let resp = api_delete_product.call(path_param, response_target).await;
+        let resp = api_delete_product.call(path_param).await;
         let err = resp.as_ref().err();
         println!("{:?}", err);
         assert_eq!(false, resp.is_err());
@@ -182,26 +187,20 @@ async fn test_simple_api_common() {
             "application/json",
             json_serializer.clone(),
             json_deserializer.clone(),
+            return_type_marker,
         );
 
-        let sent_body = Box::new(Product {
+        let sent_body = Product {
             name: "Alien ".to_string(),
             age: "5 month".to_string(),
             meta: Some("123".to_string()),
-        });
-        let response_target = Box::new(Product {
-            name: "Baxter".to_string(),
-            age: "1 month".to_string(),
-            meta: None,
-        });
+        };
         let path_param = [("id".into(), "5".into())]
             .iter()
             .cloned()
             .collect::<simple_api::PathParam>();
 
-        let resp = api_put_product
-            .call(path_param, sent_body, response_target)
-            .await;
+        let resp = api_put_product.call(path_param, sent_body).await;
         let err = resp.as_ref().err();
         println!("{:?}", err);
         assert_eq!(false, resp.is_err());
@@ -232,13 +231,12 @@ async fn test_simple_api_formdata() {
     use std::net::SocketAddr;
     use std::sync::Arc;
 
-    use bytes::Bytes;
     use formdata::FormData;
     use futures::executor::block_on;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{Body, Method, Request, Response, Server};
     use tokio::sync::Notify;
-    use tokio::time::{sleep, Duration};
+    // use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::simple_api;
@@ -307,7 +305,7 @@ async fn test_simple_api_formdata() {
             .await;
     });
 
-    sleep(Duration::from_millis(200)).await;
+    // sleep(Duration::from_millis(20)).await;
 
     /*
     let mut req = connect(&addr).unwrap();
@@ -324,13 +322,13 @@ async fn test_simple_api_formdata() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let form_data_origin = Box::new(FormData {
+    let form_data_origin = FormData {
         fields: vec![
             ("name".to_owned(), "Baxter".to_owned()),
             ("age".to_owned(), "1 month".to_owned()),
         ],
         files: vec![],
-    });
+    };
 
     let common_api = simple_api::CommonAPI::new();
 
@@ -345,14 +343,11 @@ async fn test_simple_api_formdata() {
         Method::POST,
         "/form",
         Arc::new(simple_api::DEFAULT_DUMMY_BYPASS_DESERIALIZER),
+        &bytes::Bytes::new(),
     );
 
     let resp = api_post_multipart
-        .call(
-            simple_api::PathParam::new(),
-            form_data_origin,
-            Box::new(Bytes::new()),
-        )
+        .call(simple_api::PathParam::new(), form_data_origin)
         .await;
     let err = resp.as_ref().err();
     println!("{:?}", err);

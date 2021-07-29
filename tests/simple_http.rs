@@ -22,7 +22,7 @@ async fn test_get_header() {
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
     use tokio::sync::Notify;
-    use tokio::time::{sleep, Duration};
+    // use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::simple_http::SimpleHTTP;
@@ -73,7 +73,7 @@ async fn test_get_header() {
             .await;
     });
 
-    sleep(Duration::from_millis(200)).await;
+    // sleep(Duration::from_millis(20)).await;
 
     /*
     let mut req = connect(&addr).unwrap();
@@ -137,7 +137,7 @@ async fn test_formdata() {
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
     use tokio::sync::Notify;
-    use tokio::time::{sleep, Duration};
+    // use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::simple_http;
@@ -206,7 +206,7 @@ async fn test_formdata() {
             .await;
     });
 
-    sleep(Duration::from_millis(200)).await;
+    // sleep(Duration::from_millis(20)).await;
 
     /*
     let mut req = connect(&addr).unwrap();
