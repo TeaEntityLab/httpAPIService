@@ -124,10 +124,11 @@ async fn test_simple_api_common() {
     let common_api = simple_api::CommonAPI::new();
     // Use block for Arc<Mutex> lock()
     {
-        common_api.simple_api.lock().unwrap().base_url =
+        common_api.set_base_url(
             url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
                 .ok()
-                .unwrap();
+                .unwrap(),
+        );
     }
     let json_serializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_SERIALIZER);
     let json_deserializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_DESERIALIZER);
@@ -351,10 +352,11 @@ async fn test_simple_api_formdata() {
 
     let common_api = simple_api::CommonAPI::new();
     {
-        common_api.simple_api.lock().unwrap().base_url =
+        common_api.set_base_url(
             url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
                 .ok()
-                .unwrap();
+                .unwrap(),
+        );
     }
 
     // GET make_api_multipart

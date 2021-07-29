@@ -35,6 +35,10 @@ impl<C, B> CommonAPI<C, B> {
     pub fn new_with_options(simple_api: Arc<Mutex<SimpleAPI<C, B>>>) -> Self {
         CommonAPI { simple_api }
     }
+
+    pub fn set_base_url(&self, url: Url) {
+        self.simple_api.lock().unwrap().base_url = url;
+    }
 }
 
 impl CommonAPI<HttpConnector, Body> {
