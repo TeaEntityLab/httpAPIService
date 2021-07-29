@@ -6,6 +6,7 @@ use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use bytes::Bytes;
 #[cfg(feature = "multipart")]
 use formdata::FormData;
 use http::method::Method;
@@ -55,7 +56,7 @@ impl<C> CommonAPI<C, Body> {
         &self,
         method: Method,
         relative_url: String,
-        response_deserializer: Arc<dyn BodyDeserializer<R, Body>>,
+        response_deserializer: Arc<dyn BodyDeserializer<R>>,
     ) -> APIResponseOnly<R, C, Body> {
         APIResponseOnly {
             0: self.make_api_no_body(method, relative_url, response_deserializer),
@@ -65,7 +66,7 @@ impl<C> CommonAPI<C, Body> {
         &self,
         method: Method,
         relative_url: String,
-        response_deserializer: Arc<dyn BodyDeserializer<R, Body>>,
+        response_deserializer: Arc<dyn BodyDeserializer<R>>,
     ) -> APINoBody<R, C, Body> {
         APINoBody {
             base: CommonAPI {
@@ -83,7 +84,7 @@ impl<C> CommonAPI<C, Body> {
         relative_url: String,
         content_type: String,
         request_serializer: Arc<dyn BodySerializer<T, Body>>,
-        response_deserializer: Arc<dyn BodyDeserializer<R, Body>>,
+        response_deserializer: Arc<dyn BodyDeserializer<R>>,
     ) -> APIHasBody<T, R, C, Body> {
         APIHasBody {
             base: CommonAPI {
@@ -102,7 +103,7 @@ impl<C> CommonAPI<C, Body> {
         method: Method,
         relative_url: String,
         // request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
-        response_deserializer: Arc<dyn BodyDeserializer<R, Body>>,
+        response_deserializer: Arc<dyn BodyDeserializer<R>>,
     ) -> APIMultipart<FormData, R, C, Body> {
         APIMultipart {
             base: CommonAPI {
@@ -110,7 +111,7 @@ impl<C> CommonAPI<C, Body> {
             },
             method,
             relative_url,
-            request_serializer: Arc::new(DEFAULT_MULTIPART_SERIALIZER.clone()),
+            request_serializer: Arc::new(DEFAULT_MULTIPART_SERIALIZER),
             response_deserializer,
         }
     }
@@ -161,7 +162,7 @@ pub struct APINoBody<R, C, B = Body> {
     pub relative_url: String,
     pub content_type: String,
 
-    pub response_deserializer: Arc<dyn BodyDeserializer<R, B>>,
+    pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
 impl<R, C> APINoBody<R, C, Body>
 where
@@ -178,7 +179,7 @@ where
     where
         Body: Default,
     {
-        let body = self
+        let mut body = self
             .base
             ._call_common(
                 self.method.clone(),
@@ -190,7 +191,8 @@ where
             .await?;
         // let mut target = Box::new(target);
         // let body = Box::new(body);
-        let target = self.response_deserializer.decode(body, target)?;
+        let bytes = hyper::body::to_bytes(body.as_mut()).await?;
+        let target = self.response_deserializer.decode(&bytes, target)?;
 
         Ok(target)
     }
@@ -204,7 +206,7 @@ pub struct APIHasBody<T, R, C, B = Body> {
     pub content_type: String,
 
     pub request_serializer: Arc<dyn BodySerializer<T, B>>,
-    pub response_deserializer: Arc<dyn BodyDeserializer<R, B>>,
+    pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
 impl<T, R, C> APIHasBody<T, R, C, Body>
 where
@@ -223,7 +225,7 @@ where
         Body: Default,
     {
         // let mut sent_body = Box::new(sent_body);
-        let body = self
+        let mut body = self
             .base
             ._call_common(
                 self.method.clone(),
@@ -236,7 +238,8 @@ where
 
         // let mut target = Box::new(target);
         // let body = Box::new(body);
-        let target = self.response_deserializer.decode(body, target)?;
+        let bytes = hyper::body::to_bytes(body.as_mut()).await?;
+        let target = self.response_deserializer.decode(&bytes, target)?;
 
         Ok(target)
     }
@@ -249,7 +252,7 @@ pub struct APIMultipart<T, R, C, B = Body> {
     pub relative_url: String,
     // pub content_type: String,
     pub request_serializer: Arc<dyn BodySerializer<T, (String, B)>>,
-    pub response_deserializer: Arc<dyn BodyDeserializer<R, B>>,
+    pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
 impl<T, R, C> APIMultipart<T, R, C, Body>
 where
@@ -270,7 +273,7 @@ where
         // let mut sent_body = Box::new(sent_body);
         let (content_type_with_boundary, sent_body) =
             self.request_serializer.encode(sent_body.as_ref())?;
-        let body = self
+        let mut body = self
             .base
             ._call_common(
                 self.method.clone(),
@@ -283,7 +286,8 @@ where
 
         // let mut target = Box::new(target);
         // let body = Box::new(body);
-        let target = self.response_deserializer.decode(body, target)?;
+        let bytes = hyper::body::to_bytes(body.as_mut()).await?;
+        let target = self.response_deserializer.decode(&bytes, target)?;
 
         Ok(target)
     }
@@ -294,8 +298,8 @@ pub trait BodySerializer<T, B = Body> {
     fn encode(&self, origin: &T) -> StdResult<B, Box<dyn StdError>>;
 }
 // BodyDeserializer Deserialize the body (for response)
-pub trait BodyDeserializer<R, B = Body, A = Box<R>> {
-    fn decode(&self, body: Box<B>, target: Box<R>) -> StdResult<A, Box<dyn StdError>>;
+pub trait BodyDeserializer<R> {
+    fn decode(&self, bytes: &Bytes, target: Box<R>) -> StdResult<Box<R>, Box<dyn StdError>>;
 }
 trait Outputting: Sized {
     fn outputting<O>(self) -> Self
@@ -306,8 +310,8 @@ trait Outputting: Sized {
     }
 }
 impl<T: Future> Outputting for T {}
-type BodyDeserializerFutureOutput<R> = StdResult<Box<R>, Box<dyn StdError>>;
-type BodyDeserializerFuture<R> = Box<dyn Future<Output = BodyDeserializerFutureOutput<R>>>;
+// type BodyDeserializerFutureOutput<R> = StdResult<Box<R>, Box<dyn StdError>>;
+// type BodyDeserializerFuture<R> = Box<dyn Future<Output = BodyDeserializerFutureOutput<R>>>;
 
 #[cfg(feature = "multipart")]
 #[derive(Debug, Clone, Copy)]
@@ -345,27 +349,15 @@ pub static DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSeriali
 // SerdeJsonDeserializer Deserialize the body (for response)
 pub struct SerdeJsonDeserializer {}
 #[cfg(feature = "for_serde")]
-impl<R: DeserializeOwned + 'static> BodyDeserializer<R, Body, BodyDeserializerFuture<R>>
-    for SerdeJsonDeserializer
-{
-    fn decode(
-        &self,
-        mut body: Box<Body>,
-        mut target: Box<R>,
-    ) -> StdResult<BodyDeserializerFuture<R>, Box<dyn StdError>> {
-        Ok(Box::new(
-            async move {
-                let bytes = hyper::body::to_bytes(body.as_mut()).await?;
-                (*target.as_mut()) = serde_json::from_slice(bytes.to_vec().as_slice())?;
+impl<R: DeserializeOwned + 'static> BodyDeserializer<R> for SerdeJsonDeserializer {
+    fn decode(&self, bytes: &Bytes, mut target: Box<R>) -> StdResult<Box<R>, Box<dyn StdError>> {
+        (*target.as_mut()) = serde_json::from_slice(bytes.to_vec().as_slice())?;
 
-                Ok(target)
-            }
-            .outputting::<BodyDeserializerFutureOutput<R>>(),
-        ))
+        Ok(target)
     }
 }
-#[cfg(feature = "for_serde")]
-pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
+// #[cfg(feature = "for_serde")]
+// pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
 
 // SimpleAPI SimpleAPI inspired by Retrofits
 pub struct SimpleAPI<C, B = Body> {

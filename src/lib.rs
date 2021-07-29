@@ -1,3 +1,4 @@
+extern crate bytes;
 #[cfg(feature = "multipart")]
 extern crate formdata;
 extern crate futures;

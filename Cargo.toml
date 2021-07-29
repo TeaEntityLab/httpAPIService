@@ -27,7 +27,7 @@ runtime = [
   "multipart", "for_serde"
 ]
 no_multipart = []
-multipart = [ "formdata", "multer", "bytes", "mime" ]
+multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
 
 [dependencies]
@@ -38,9 +38,9 @@ tokio = { version = "^1.8.0", features = ["full"] }
 multer = { version = "^2.0.0", optional = true }
 formdata = { version = "^0.13.0", optional = true }
 mime = { version = "^0.3.0", optional = true }
-bytes = { version = "^1.0.0", optional = true }
 serde = { version = "^1.0", features = ["derive"], optional = true }
 serde_json = { version = "^1.0", optional = true }
+bytes = "^1.0.0"
 http = "^0.2.4"
 futures="^0.3.0"
 url="^2.2.0"

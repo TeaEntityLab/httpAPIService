@@ -11,7 +11,6 @@ use hyper::header::CONTENT_TYPE;
 use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
 use mime::MULTIPART_FORM_DATA;
 
-#[cfg(feature = "multipart")]
 use bytes::Bytes;
 #[cfg(feature = "multipart")]
 use formdata::FormData;
