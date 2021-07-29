@@ -38,6 +38,8 @@ serde_json = { version = "^1.0", optional = true }
 
 ```rust
 
+use hyper_api_service::simple_api;
+
 let json_serializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_SERIALIZER);
 let json_deserializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_DESERIALIZER);
 
@@ -60,7 +62,6 @@ let api_get_product = common_api.make_api_no_body(
 let response_target = Box::new(Product {
     name: "".to_string(),
     age: "".to_string(),
-    meta: None,
 });
 let path_param = [("id".into(), "3".into())]
     .iter()
@@ -70,6 +71,15 @@ let resp = api_get_product.call(path_param, response_target).await;
 let model = resp.ok().unwrap();
 
 // POST
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Product {
+    name: String,
+    age: String,
+    meta: Option<String>,
+}
 
 let api_post_product = common_api.make_api_has_body(
     Method::POST,
@@ -82,12 +92,10 @@ let api_post_product = common_api.make_api_has_body(
 let sent_body = Box::new(Product {
     name: "Alien ".to_string(),
     age: "5 month".to_string(),
-    meta: Some("123".to_string()),
 });
 let response_target = Box::new(Product {
     name: "".to_string(),
     age: "".to_string(),
-    meta: None,
 });
 let path_param = [("id".into(), "5".into())]
     .iter()
@@ -98,5 +106,30 @@ let resp = api_post_product
     .call(path_param, sent_body, response_target)
     .await;
 let model = resp.ok().unwrap();
+
+// Multipart
+
+let form_data_origin = Box::new(FormData {
+    fields: vec![
+        ("name".to_owned(), "Baxter".to_owned()),
+        ("age".to_owned(), "1 month".to_owned()),
+    ],
+    files: vec![],
+});
+
+// POST make_api_multipart
+let api_post_multipart = common_api.make_api_multipart(
+    Method::POST,
+    "/form",
+    json_deserializer.clone(),
+);
+let resp = api_post_multipart
+    .call(
+        simple_api::PathParam::new(),
+        form_data_origin,
+        Box::new(Bytes::new()),
+    )
+    .await;
+let resp = resp.ok().unwrap();
 
 ```

@@ -340,7 +340,7 @@ async fn test_simple_api_formdata() {
             .unwrap(),
     );
 
-    // GET make_api_multipart
+    // POST make_api_multipart
     let api_post_multipart = common_api.make_api_multipart(
         Method::POST,
         "/form",
