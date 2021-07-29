@@ -125,11 +125,17 @@ let api_post_multipart = common_api.make_api_multipart(
     "/form",
     json_deserializer.clone(),
 );
+
+let response_target = Box::new(Product {
+    name: "".to_string(),
+    age: "".to_string(),
+});
+
 let resp = api_post_multipart
     .call(
         simple_api::PathParam::new(),
         form_data_origin,
-        Box::new(Bytes::new()),
+        response_target,
     )
     .await;
 let resp = resp.ok().unwrap();
