@@ -109,6 +109,8 @@ let model = resp.ok().unwrap();
 
 // Multipart
 
+use formdata::FormData;
+
 let form_data_origin = Box::new(FormData {
     fields: vec![
         ("name".to_owned(), "Baxter".to_owned()),
