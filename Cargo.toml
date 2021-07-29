@@ -10,7 +10,7 @@ description = "A Retrofit inspired implementation for Rust."
 documentation = "https://docs.rs/hyper_api_service/"
 homepage = "https://github.com/TeaEntityLab/hyperAPIService"
 repository = "https://github.com/TeaEntityLab/hyperAPIService"
-keywords = ["retrofit","http","service","api","binding","async","hyper"]
+keywords = ["retrofit","http","api","binding","hyper"]
 
 [badges.maintenance]
 status = "actively-developed"
