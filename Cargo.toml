@@ -49,3 +49,8 @@ url="^2.2.0"
 name = "simple_http"
 path = "tests/simple_http.rs"
 required-features = ["runtime"]
+
+[[test]]
+name = "simple_api"
+path = "tests/simple_api.rs"
+required-features = ["runtime"]

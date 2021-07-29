@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::result::Result as StdResult;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 #[cfg(feature = "multipart")]
@@ -25,14 +25,14 @@ use super::simple_http::SimpleHTTP;
 // use simple_http;
 
 // PathParam Path params for API usages
-type PathParam = HashMap<String, Box<dyn Debug>>;
+pub type PathParam = HashMap<String, String>;
 
 pub struct CommonAPI<C, B = Body> {
-    pub simple_api: Arc<SimpleAPI<C, B>>,
+    pub simple_api: Arc<Mutex<SimpleAPI<C, B>>>,
 }
 
 impl<C, B> CommonAPI<C, B> {
-    pub fn new_with_options(simple_api: Arc<SimpleAPI<C, B>>) -> Self {
+    pub fn new_with_options(simple_api: Arc<Mutex<SimpleAPI<C, B>>>) -> Self {
         CommonAPI { simple_api }
     }
 }
@@ -47,7 +47,7 @@ impl CommonAPI<HttpConnector, Body> {
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[inline]
     pub fn new() -> CommonAPI<HttpConnector, Body> {
-        return CommonAPI::new_with_options(Arc::new(SimpleAPI::new()));
+        return CommonAPI::new_with_options(Arc::new(Mutex::new(SimpleAPI::new())));
     }
 }
 
@@ -55,7 +55,7 @@ impl<C> CommonAPI<C, Body> {
     pub fn make_api_response_only<R>(
         &self,
         method: Method,
-        relative_url: String,
+        relative_url: impl Into<String>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
     ) -> APIResponseOnly<R, C, Body> {
         APIResponseOnly {
@@ -65,7 +65,7 @@ impl<C> CommonAPI<C, Body> {
     pub fn make_api_no_body<R>(
         &self,
         method: Method,
-        relative_url: String,
+        relative_url: impl Into<String>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
     ) -> APINoBody<R, C, Body> {
         APINoBody {
@@ -73,7 +73,7 @@ impl<C> CommonAPI<C, Body> {
                 simple_api: self.simple_api.clone(),
             },
             method,
-            relative_url,
+            relative_url: relative_url.into(),
             response_deserializer,
             content_type: "".to_string(),
         }
@@ -81,8 +81,8 @@ impl<C> CommonAPI<C, Body> {
     pub fn make_api_has_body<T, R>(
         &self,
         method: Method,
-        relative_url: String,
-        content_type: String,
+        relative_url: impl Into<String>,
+        content_type: impl Into<String>,
         request_serializer: Arc<dyn BodySerializer<T, Body>>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
     ) -> APIHasBody<T, R, C, Body> {
@@ -91,8 +91,8 @@ impl<C> CommonAPI<C, Body> {
                 simple_api: self.simple_api.clone(),
             },
             method,
-            relative_url,
-            content_type,
+            relative_url: relative_url.into(),
+            content_type: content_type.into(),
             request_serializer,
             response_deserializer,
         }
@@ -101,7 +101,7 @@ impl<C> CommonAPI<C, Body> {
     pub fn make_api_multipart<R>(
         &self,
         method: Method,
-        relative_url: String,
+        relative_url: impl Into<String>,
         // request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
     ) -> APIMultipart<FormData, R, C, Body> {
@@ -110,7 +110,7 @@ impl<C> CommonAPI<C, Body> {
                 simple_api: self.simple_api.clone(),
             },
             method,
-            relative_url,
+            relative_url: relative_url.into(),
             request_serializer: Arc::new(DEFAULT_MULTIPART_SERIALIZER),
             response_deserializer,
         }
@@ -124,15 +124,14 @@ where
     async fn _call_common(
         &self,
         method: Method,
-        relative_url: String,
-        content_type: String,
+        relative_url: impl Into<String>,
+        content_type: impl Into<String>,
         path_param: impl Into<PathParam>,
         body: Body,
     ) -> StdResult<Box<Body>, Box<dyn StdError>> {
-        let req =
-            self.simple_api
-                .make_request(method, relative_url, content_type, path_param, body)?;
-        let body = self.simple_api.simple_http.request(req).await??.into_body();
+        let simple_api = self.simple_api.lock().unwrap();
+        let req = simple_api.make_request(method, relative_url, content_type, path_param, body)?;
+        let body = simple_api.simple_http.request(req).await??.into_body();
 
         Ok(Box::new(body))
     }
@@ -313,6 +312,22 @@ impl<T: Future> Outputting for T {}
 // type BodyDeserializerFutureOutput<R> = StdResult<Box<R>, Box<dyn StdError>>;
 // type BodyDeserializerFuture<R> = Box<dyn Future<Output = BodyDeserializerFutureOutput<R>>>;
 
+#[derive(Debug, Clone, Copy)]
+// DummyBypassDeserializer Dummy bypass the body, do nothing (for response)
+pub struct DummyBypassDeserializer {}
+impl BodyDeserializer<Bytes> for DummyBypassDeserializer {
+    fn decode(
+        &self,
+        bytes: &Bytes,
+        mut target: Box<Bytes>,
+    ) -> StdResult<Box<Bytes>, Box<dyn StdError>> {
+        (*target.as_mut()) = bytes.clone();
+
+        Ok(target)
+    }
+}
+pub static DEFAULT_DUMMY_BYPASS_DESERIALIZER: DummyBypassDeserializer = DummyBypassDeserializer {};
+
 #[cfg(feature = "multipart")]
 #[derive(Debug, Clone, Copy)]
 // MultipartSerializer Serialize the multipart body (for put/post/patch etc)
@@ -356,8 +371,8 @@ impl<R: DeserializeOwned + 'static> BodyDeserializer<R> for SerdeJsonDeserialize
         Ok(target)
     }
 }
-// #[cfg(feature = "for_serde")]
-// pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
+#[cfg(feature = "for_serde")]
+pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
 
 // SimpleAPI SimpleAPI inspired by Retrofits
 pub struct SimpleAPI<C, B = Body> {
@@ -408,20 +423,20 @@ where
     pub fn make_request(
         &self,
         method: Method,
-        relative_url: String,
-        content_type: String,
+        relative_url: impl Into<String>,
+        content_type: impl Into<String>,
         path_param: impl Into<PathParam>,
         body: B,
     ) -> StdResult<Request<B>, Box<dyn StdError>> {
+        let mut relative_url = relative_url.into();
+        for (k, v) in path_param.into().into_iter() {
+            relative_url = relative_url.replace(&("{".to_string() + &k + "}"), &v);
+        }
+
         let mut req = Request::new(body);
         // Url
-        match self.base_url.join(relative_url.as_str()) {
+        match self.base_url.join(&relative_url) {
             Ok(url) => {
-                let mut url = url.to_string();
-
-                for (k, v) in path_param.into().into_iter() {
-                    url = url.replace(format!("{{{}}}", k).as_str(), format!("{:?}", v).as_str())
-                }
                 *req.uri_mut() = Uri::from_str(url.as_str())?;
             }
             Err(e) => return Err(Box::new(e)),
@@ -430,9 +445,10 @@ where
         *req.method_mut() = method;
         // Header
         *req.headers_mut() = self.default_header.clone();
+        let content_type = content_type.into();
         if !content_type.is_empty() {
             req.headers_mut()
-                .insert(CONTENT_TYPE, HeaderValue::from_str(content_type.as_str())?);
+                .insert(CONTENT_TYPE, HeaderValue::from_str(&content_type)?);
         }
 
         Ok(req)
@@ -446,7 +462,7 @@ where
     pub fn make_request_multipart(
         &self,
         method: Method,
-        relative_url: String,
+        relative_url: impl Into<String>,
         // content_type: String,
         path_param: impl Into<PathParam>,
         body: FormData,

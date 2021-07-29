@@ -1,6 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::error::Error as StdError;
 use std::result::Result as StdResult;
+use std::sync::Arc;
 use std::time::Duration;
 
 use http::method::Method;
@@ -32,14 +33,14 @@ pub type SimpleHTTPResponse<B> = StdResult<Result<Response<B>>, Box<dyn StdError
 // SimpleHTTP SimpleHTTP inspired by Retrofits
 pub struct SimpleHTTP<C, B = Body> {
     pub client: Client<C, B>,
-    pub interceptors: VecDeque<Box<dyn Interceptor<B>>>,
+    pub interceptors: VecDeque<Arc<dyn Interceptor<B>>>,
     pub timeout_millisecond: u64,
 }
 
 impl<C, B> SimpleHTTP<C, B> {
     pub fn new_with_options(
         client: Client<C, B>,
-        interceptors: VecDeque<Box<dyn Interceptor<B>>>,
+        interceptors: VecDeque<Arc<dyn Interceptor<B>>>,
         timeout_millisecond: u64,
     ) -> Self {
         SimpleHTTP {
@@ -99,10 +100,7 @@ impl std::fmt::Display for FormDataParseError {
 pub fn get_content_type_from_multipart_boundary(
     boundary: Vec<u8>,
 ) -> StdResult<String, Box<dyn StdError>> {
-    Ok(MULTIPART_FORM_DATA.to_string()
-        + "; boundary=\""
-        + String::from_utf8(boundary)?.as_str()
-        + "\"")
+    Ok(MULTIPART_FORM_DATA.to_string() + "; boundary=\"" + &String::from_utf8(boundary)? + "\"")
 }
 #[cfg(feature = "multipart")]
 pub fn body_from_multipart(form_data: &FormData) -> StdResult<(Body, Vec<u8>), Box<dyn StdError>> {
