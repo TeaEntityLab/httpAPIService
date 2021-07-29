@@ -7,6 +7,10 @@ extern crate hyper;
 extern crate mime;
 #[cfg(feature = "multipart")]
 extern crate multer;
+#[cfg(feature = "for_serde")]
+extern crate serde;
+#[cfg(feature = "for_serde")]
+extern crate serde_json;
 extern crate tokio;
 extern crate url;
 

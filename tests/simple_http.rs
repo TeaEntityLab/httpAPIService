@@ -19,7 +19,7 @@ async fn test_get_header() {
     use std::sync::Arc;
 
     // use futures::executor::block_on;
-    use hyper::header::HeaderMap;
+    // use hyper::header::HeaderMap;
     use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
@@ -28,7 +28,7 @@ async fn test_get_header() {
 
     use fp_rust::sync::CountDownLatch;
     // use hyper_api_service::blocking_future;
-    use hyper_api_service::simple_http;
+    // use hyper_api_service::simple_http;
     use hyper_api_service::simple_http::SimpleHTTP;
 
     let hyper_latch = Arc::new(Notify::new());
@@ -130,18 +130,18 @@ async fn test_formdata() {
     extern crate formdata;
     extern crate multer;
 
-    use std::iter::IntoIterator;
+    use std::iter::{FromIterator, IntoIterator};
     use std::net::SocketAddr;
     use std::sync::Arc;
 
     use formdata::FormData;
     use futures::executor::block_on;
-    use hyper::client::HttpConnector;
+    // use hyper::client::HttpConnector;
     use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
-    use mime::MULTIPART_FORM_DATA;
-    use multer::Multipart;
+    // use mime::MULTIPART_FORM_DATA;
+    // use multer::Multipart;
     use tokio::sync::Notify;
     use tokio::time::{sleep, Duration};
 
@@ -187,7 +187,10 @@ async fn test_formdata() {
                     let hash_map = hash_map.ok().unwrap();
 
                     let mut body_str = String::new();
-                    for (k, item) in hash_map.into_iter() {
+                    let mut keys = Vec::from_iter(hash_map.keys().into_iter());
+                    keys.sort();
+                    for k in keys.into_iter() {
+                        let item = hash_map.get(k).expect("hash_map unwrap failed");
                         body_str =
                             body_str + format!("{:?}:{:?}:{:?}\n", item.0, item.1, item.2).as_str();
                     }
@@ -228,15 +231,16 @@ async fn test_formdata() {
     */
 
     let simple_http = SimpleHTTP::new();
-    let (body, boundary) = simple_http::body_from_multipart(FormData {
+    let form_data_origin = FormData {
         fields: vec![
             ("name".to_owned(), "Baxter".to_owned()),
             ("age".to_owned(), "1 month".to_owned()),
         ],
         files: vec![],
-    })
-    .ok()
-    .unwrap();
+    };
+    let (body, boundary) = simple_http::body_from_multipart(&form_data_origin)
+        .ok()
+        .unwrap();
 
     println!(
         "boundary: {:?}",
@@ -263,7 +267,7 @@ async fn test_formdata() {
     println!("{:?}", err);
     assert_eq!(false, resp.is_err());
 
-    let mut resp = resp.ok().unwrap();
+    let resp = resp.ok().unwrap();
 
     let body_instance = resp.into_body();
     let bytes = body::to_bytes(body_instance).await.ok().unwrap();
@@ -272,7 +276,7 @@ async fn test_formdata() {
     println!("body_str: {:?}", body_str);
 
     assert_eq!(
-        "\"name\":\"\":b\"Baxter\"\n\"age\":\"\":b\"1 month\"\n",
+        "\"age\":\"\":b\"1 month\"\n\"name\":\"\":b\"Baxter\"\n",
         body_str
     );
 

@@ -21,11 +21,14 @@ path = "src/lib.rs"
 
 [features]
 default = [
-  "multipart"
+  "multipart", "for_serde"
 ]
-runtime = [ "multipart" ]
+runtime = [
+  "multipart", "for_serde"
+]
 no_multipart = []
 multipart = [ "formdata", "multer", "bytes", "mime" ]
+for_serde = [ "serde", "serde_json" ]
 
 [dependencies]
 fp_rust="^0.1.40"
@@ -36,6 +39,8 @@ multer = { version = "^2.0.0", optional = true }
 formdata = { version = "^0.13.0", optional = true }
 mime = { version = "^0.3.0", optional = true }
 bytes = { version = "^1.0.0", optional = true }
+serde = { version = "^1.0", features = ["derive"], optional = true }
+serde_json = { version = "^1.0", optional = true }
 http = "^0.2.4"
 futures="^0.3.0"
 url="^2.2.0"

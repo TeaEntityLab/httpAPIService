@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
+use std::future::Future;
 use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -12,6 +13,10 @@ use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::{Body, HeaderMap, Request, Uri};
+#[cfg(feature = "for_serde")]
+use serde::{de::DeserializeOwned, Serialize};
+#[cfg(feature = "for_serde")]
+use serde_json;
 use url::Url;
 
 use super::simple_http;
@@ -168,7 +173,7 @@ where
     pub async fn call(
         &self,
         path_param: impl Into<PathParam>,
-        mut target: Box<R>,
+        target: Box<R>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         Body: Default,
@@ -185,8 +190,7 @@ where
             .await?;
         // let mut target = Box::new(target);
         // let body = Box::new(body);
-        self.response_deserializer
-            .decode(body.as_ref(), target.as_mut())?;
+        let target = self.response_deserializer.decode(body, target)?;
 
         Ok(target)
     }
@@ -213,7 +217,7 @@ where
         &self,
         path_param: impl Into<PathParam>,
         sent_body: Box<T>,
-        mut target: Box<R>,
+        target: Box<R>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         Body: Default,
@@ -232,8 +236,7 @@ where
 
         // let mut target = Box::new(target);
         // let body = Box::new(body);
-        self.response_deserializer
-            .decode(body.as_ref(), target.as_mut())?;
+        let target = self.response_deserializer.decode(body, target)?;
 
         Ok(target)
     }
@@ -259,7 +262,7 @@ where
         &self,
         path_param: impl Into<PathParam>,
         sent_body: Box<T>,
-        mut target: Box<R>,
+        target: Box<R>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         Body: Default,
@@ -280,8 +283,7 @@ where
 
         // let mut target = Box::new(target);
         // let body = Box::new(body);
-        self.response_deserializer
-            .decode(body.as_ref(), target.as_mut())?;
+        let target = self.response_deserializer.decode(body, target)?;
 
         Ok(target)
     }
@@ -292,9 +294,20 @@ pub trait BodySerializer<T, B = Body> {
     fn encode(&self, origin: &T) -> StdResult<B, Box<dyn StdError>>;
 }
 // BodyDeserializer Deserialize the body (for response)
-pub trait BodyDeserializer<R, B = Body> {
-    fn decode(&self, body: &B, target: &mut R) -> StdResult<(), Box<dyn StdError>>;
+pub trait BodyDeserializer<R, B = Body, A = Box<R>> {
+    fn decode(&self, body: Box<B>, target: Box<R>) -> StdResult<A, Box<dyn StdError>>;
 }
+trait Outputting: Sized {
+    fn outputting<O>(self) -> Self
+    where
+        Self: Future<Output = O>,
+    {
+        self
+    }
+}
+impl<T: Future> Outputting for T {}
+type BodyDeserializerFutureOutput<R> = StdResult<Box<R>, Box<dyn StdError>>;
+type BodyDeserializerFuture<R> = Box<dyn Future<Output = BodyDeserializerFutureOutput<R>>>;
 
 #[cfg(feature = "multipart")]
 #[derive(Debug, Clone, Copy)]
@@ -311,6 +324,48 @@ impl BodySerializer<FormData, (String, Body)> for MultipartSerializer {
 }
 #[cfg(feature = "multipart")]
 pub static DEFAULT_MULTIPART_SERIALIZER: MultipartSerializer = MultipartSerializer {};
+
+#[cfg(feature = "for_serde")]
+#[derive(Debug, Clone, Copy)]
+// SerdeJsonSerializer Serialize the for_serde body (for put/post/patch etc)
+pub struct SerdeJsonSerializer {}
+#[cfg(feature = "for_serde")]
+impl<T: Serialize> BodySerializer<T, Body> for SerdeJsonSerializer {
+    fn encode(&self, origin: &T) -> StdResult<Body, Box<dyn StdError>> {
+        let serialized = serde_json::to_vec(origin)?;
+
+        Ok(Body::from(serialized))
+    }
+}
+#[cfg(feature = "for_serde")]
+pub static DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSerializer {};
+
+#[cfg(feature = "for_serde")]
+#[derive(Debug, Clone, Copy)]
+// SerdeJsonDeserializer Deserialize the body (for response)
+pub struct SerdeJsonDeserializer {}
+#[cfg(feature = "for_serde")]
+impl<R: DeserializeOwned + 'static> BodyDeserializer<R, Body, BodyDeserializerFuture<R>>
+    for SerdeJsonDeserializer
+{
+    fn decode(
+        &self,
+        mut body: Box<Body>,
+        mut target: Box<R>,
+    ) -> StdResult<BodyDeserializerFuture<R>, Box<dyn StdError>> {
+        Ok(Box::new(
+            async move {
+                let bytes = hyper::body::to_bytes(body.as_mut()).await?;
+                (*target.as_mut()) = serde_json::from_slice(bytes.to_vec().as_slice())?;
+
+                Ok(target)
+            }
+            .outputting::<BodyDeserializerFutureOutput<R>>(),
+        ))
+    }
+}
+#[cfg(feature = "for_serde")]
+pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
 
 // SimpleAPI SimpleAPI inspired by Retrofits
 pub struct SimpleAPI<C, B = Body> {
