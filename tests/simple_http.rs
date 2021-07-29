@@ -1,4 +1,3 @@
-extern crate fp_rust;
 extern crate futures;
 extern crate hyper;
 
@@ -15,6 +14,7 @@ fn connect(addr: &SocketAddr) -> std::io::Result<TcpStream> {
 
 #[tokio::test]
 async fn test_get_header() {
+    extern crate fp_rust;
     use std::net::SocketAddr;
     use std::sync::Arc;
 
@@ -123,6 +123,7 @@ async fn test_get_header() {
 #[cfg(feature = "multipart")]
 #[tokio::test]
 async fn test_formdata() {
+    extern crate fp_rust;
     extern crate formdata;
     extern crate multer;
 

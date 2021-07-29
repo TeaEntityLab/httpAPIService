@@ -1,4 +1,3 @@
-extern crate fp_rust;
 extern crate futures;
 extern crate hyper;
 
@@ -7,6 +6,7 @@ extern crate hyper_api_service;
 #[cfg(feature = "default")]
 #[tokio::test]
 async fn test_simple_api_common() {
+    extern crate fp_rust;
     extern crate formdata;
     extern crate multer;
 
@@ -243,7 +243,6 @@ async fn test_simple_api_formdata() {
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::simple_api;
     use hyper_api_service::simple_http;
-    use hyper_api_service::simple_http::SimpleHTTP;
 
     let hyper_latch = Arc::new(Notify::new());
     let started_latch = CountDownLatch::new(1);
