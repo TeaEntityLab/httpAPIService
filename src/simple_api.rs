@@ -96,7 +96,7 @@ impl<C> CommonAPI<C, Body> {
         &self,
         method: Method,
         relative_url: String,
-        request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
+        // request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
         response_deserializer: Arc<dyn BodyDeserializer<R, Body>>,
     ) -> APIMultipart<FormData, R, C, Body> {
         APIMultipart {
@@ -105,7 +105,7 @@ impl<C> CommonAPI<C, Body> {
             },
             method,
             relative_url,
-            request_serializer,
+            request_serializer: Arc::new(DEFAULT_MULTIPART_SERIALIZER.clone()),
             response_deserializer,
         }
     }
@@ -146,7 +146,7 @@ where
 {
     pub async fn call(
         &self,
-        path_param: PathParam,
+        path_param: impl Into<PathParam>,
         mut target: Box<R>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
@@ -195,7 +195,7 @@ where
 {
     pub async fn call(
         &self,
-        path_param: PathParam,
+        path_param: impl Into<PathParam>,
         sent_body: Box<T>,
         mut target: Box<R>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
@@ -245,7 +245,7 @@ where
 {
     pub async fn call(
         &self,
-        path_param: PathParam,
+        path_param: impl Into<PathParam>,
         sent_body: Box<T>,
         mut target: Box<R>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
@@ -253,11 +253,12 @@ where
         Body: Default,
     {
         // let mut sent_body = Box::new(sent_body);
-        let (boundary, sent_body) = self.request_serializer.encode(sent_body.as_ref())?;
+        let (content_type_with_boundary, sent_body) =
+            self.request_serializer.encode(sent_body.as_ref())?;
         let req = self.base.simple_api.make_request(
             self.method.clone(),
             self.relative_url.clone(),
-            boundary,
+            content_type_with_boundary,
             path_param,
             sent_body,
         )?;
@@ -287,9 +288,21 @@ pub trait BodyDeserializer<R, B = Body> {
     fn decode(&self, body: &B, target: &mut R) -> StdResult<(), Box<dyn StdError>>;
 }
 
-// #[cfg(feature = "multipart")]
-// // MultipartSerializer Serialize the multipart body (for put/post/patch etc)
-// type MultipartSerializer<B = Body> = dyn FnMut(&mut FormData) -> StdResult<B, dyn StdError>;
+#[cfg(feature = "multipart")]
+#[derive(Debug, Clone, Copy)]
+// MultipartSerializer Serialize the multipart body (for put/post/patch etc)
+pub struct MultipartSerializer {}
+#[cfg(feature = "multipart")]
+impl BodySerializer<FormData, (String, Body)> for MultipartSerializer {
+    fn encode(&self, origin: &FormData) -> StdResult<(String, Body), Box<dyn StdError>> {
+        let (body, boundary) = simple_http::body_from_multipart(origin)?;
+        let content_type = simple_http::get_content_type_from_multipart_boundary(boundary)?;
+
+        Ok((content_type, body))
+    }
+}
+#[cfg(feature = "multipart")]
+pub static DEFAULT_MULTIPART_SERIALIZER: MultipartSerializer = MultipartSerializer {};
 
 // SimpleAPI SimpleAPI inspired by Retrofits
 pub struct SimpleAPI<C, B = Body> {
@@ -342,7 +355,7 @@ where
         method: Method,
         relative_url: String,
         content_type: String,
-        path_param: PathParam,
+        path_param: impl Into<PathParam>,
         body: B,
     ) -> StdResult<Request<B>, Box<dyn StdError>> {
         let mut req = Request::new(body);
@@ -351,7 +364,7 @@ where
             Ok(url) => {
                 let mut url = url.to_string();
 
-                for (k, v) in path_param.into_iter() {
+                for (k, v) in path_param.into().into_iter() {
                     url = url.replace(format!("{{{}}}", k).as_str(), format!("{:?}", v).as_str())
                 }
                 *req.uri_mut() = Uri::from_str(url.as_str())?;
@@ -380,15 +393,15 @@ where
         method: Method,
         relative_url: String,
         // content_type: String,
-        path_param: PathParam,
+        path_param: impl Into<PathParam>,
         body: FormData,
     ) -> StdResult<Request<Body>, Box<dyn StdError>> {
-        let (body, boundary) = simple_http::body_from_multipart(body)?;
+        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER.encode(&body)?;
         self.make_request(
             method,
             relative_url,
             // if content_type.is_empty() {
-            simple_http::get_content_type_from_multipart_boundary(boundary)?,
+            content_type,
             // } else {
             //     content_type
             // },

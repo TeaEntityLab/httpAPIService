@@ -106,10 +106,10 @@ pub fn get_content_type_from_multipart_boundary(
         + "\"")
 }
 #[cfg(feature = "multipart")]
-pub fn body_from_multipart(form_data: FormData) -> StdResult<(Body, Vec<u8>), Box<dyn StdError>> {
+pub fn body_from_multipart(form_data: &FormData) -> StdResult<(Body, Vec<u8>), Box<dyn StdError>> {
     let mut data = Vec::<u8>::new();
     let boundary = formdata::generate_boundary();
-    formdata::write_formdata(&mut data, &boundary, &form_data)?;
+    formdata::write_formdata(&mut data, &boundary, form_data)?;
 
     Ok((Body::from(data), boundary))
 }
