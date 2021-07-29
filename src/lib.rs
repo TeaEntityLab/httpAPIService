@@ -15,7 +15,5 @@ extern crate serde_json;
 extern crate tokio;
 extern crate url;
 
-extern crate fp_rust;
-
 pub mod simple_api;
 pub mod simple_http;

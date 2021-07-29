@@ -18,8 +18,6 @@ async fn test_get_header() {
     use std::net::SocketAddr;
     use std::sync::Arc;
 
-    // use futures::executor::block_on;
-    // use hyper::header::HeaderMap;
     use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
@@ -27,8 +25,6 @@ async fn test_get_header() {
     use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
-    // use hyper_api_service::blocking_future;
-    // use hyper_api_service::simple_http;
     use hyper_api_service::simple_http::SimpleHTTP;
 
     let hyper_latch = Arc::new(Notify::new());
@@ -136,17 +132,13 @@ async fn test_formdata() {
 
     use formdata::FormData;
     use futures::executor::block_on;
-    // use hyper::client::HttpConnector;
     use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
-    // use mime::MULTIPART_FORM_DATA;
-    // use multer::Multipart;
     use tokio::sync::Notify;
     use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
-    // use hyper_api_service::blocking_future;
     use hyper_api_service::simple_http;
     use hyper_api_service::simple_http::SimpleHTTP;
 

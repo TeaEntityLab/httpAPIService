@@ -23,34 +23,42 @@ path = "src/lib.rs"
 default = [
   "multipart", "for_serde"
 ]
-runtime = [
-  "multipart", "for_serde"
-]
-no_multipart = []
+pure = []
 multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
 
-[dependencies]
-fp_rust="^0.1.40"
+test_runtime = [
+"multipart", "for_serde", "fp_rust",
+]
 
+[dependencies]
+
+# Required
 hyper = { version = "^0.14.0", features = ["full"] }
 tokio = { version = "^1.8.0", features = ["full"] }
-multer = { version = "^2.0.0", optional = true }
-formdata = { version = "^0.13.0", optional = true }
-mime = { version = "^0.3.0", optional = true }
-serde = { version = "^1.0", features = ["derive"], optional = true }
-serde_json = { version = "^1.0", optional = true }
 bytes = "^1.0.0"
 http = "^0.2.4"
 futures="^0.3.0"
 url="^2.2.0"
 
+# multipart
+formdata = { version = "^0.13.0", optional = true }
+multer = { version = "^2.0.0", optional = true }
+mime = { version = "^0.3.0", optional = true }
+
+# for_serde
+serde = { version = "^1.0", features = ["derive"], optional = true }
+serde_json = { version = "^1.0", optional = true }
+
+# test_runtime
+fp_rust={ version = "^0.1.40", optional = true }
+
 [[test]]
 name = "simple_http"
 path = "tests/simple_http.rs"
-required-features = ["runtime"]
+required-features = ["test_runtime"]
 
 [[test]]
 name = "simple_api"
 path = "tests/simple_api.rs"
-required-features = ["runtime"]
+required-features = ["test_runtime"]

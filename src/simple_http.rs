@@ -10,6 +10,7 @@ use http::method::Method;
 use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::CONTENT_TYPE;
 use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
+#[cfg(feature = "multipart")]
 use mime::MULTIPART_FORM_DATA;
 
 use bytes::Bytes;
@@ -19,8 +20,6 @@ use formdata::FormData;
 use multer;
 #[cfg(feature = "multipart")]
 use multer::Multipart;
-
-// use fp_rust;
 
 pub const DEFAULT_TIMEOUT_MILLISECOND: u64 = 30 * 1000;
 

@@ -10,26 +10,17 @@ async fn test_simple_api_common() {
     extern crate formdata;
     extern crate multer;
 
-    use std::iter::{FromIterator, IntoIterator};
     use std::net::SocketAddr;
     use std::sync::Arc;
 
-    use futures::executor::block_on;
-    // use hyper::client::HttpConnector;
-    use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
-    // use mime::MULTIPART_FORM_DATA;
-    // use multer::Multipart;
     use serde::{Deserialize, Serialize};
     use tokio::sync::Notify;
     use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
-    // use hyper_api_service::blocking_future;
     use hyper_api_service::simple_api;
-    use hyper_api_service::simple_http;
-    use hyper_api_service::simple_http::SimpleHTTP;
 
     #[derive(Serialize, Deserialize, Debug)]
     struct Product {
@@ -122,14 +113,12 @@ async fn test_simple_api_common() {
     */
 
     let common_api = simple_api::CommonAPI::new();
-    // Use block for Arc<Mutex> lock()
-    {
-        common_api.set_base_url(
-            url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
-                .ok()
-                .unwrap(),
-        );
-    }
+    common_api.set_base_url(
+        url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
+            .ok()
+            .unwrap(),
+    );
+
     let json_serializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_SERIALIZER);
     let json_deserializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_DESERIALIZER);
 
@@ -243,20 +232,15 @@ async fn test_simple_api_formdata() {
     use std::net::SocketAddr;
     use std::sync::Arc;
 
+    use bytes::Bytes;
     use formdata::FormData;
     use futures::executor::block_on;
-    // use hyper::client::HttpConnector;
-    use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
-    use hyper::{body, Body, Method, Request, Response, Server};
-    // use mime::MULTIPART_FORM_DATA;
-    // use multer::Multipart;
-    use bytes::Bytes;
+    use hyper::{Body, Method, Request, Response, Server};
     use tokio::sync::Notify;
     use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
-    // use hyper_api_service::blocking_future;
     use hyper_api_service::simple_api;
     use hyper_api_service::simple_http;
     use hyper_api_service::simple_http::SimpleHTTP;
@@ -341,7 +325,6 @@ async fn test_simple_api_formdata() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let simple_http = SimpleHTTP::new();
     let form_data_origin = Box::new(FormData {
         fields: vec![
             ("name".to_owned(), "Baxter".to_owned()),
@@ -351,13 +334,12 @@ async fn test_simple_api_formdata() {
     });
 
     let common_api = simple_api::CommonAPI::new();
-    {
-        common_api.set_base_url(
-            url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
-                .ok()
-                .unwrap(),
-        );
-    }
+
+    common_api.set_base_url(
+        url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
+            .ok()
+            .unwrap(),
+    );
 
     // GET make_api_multipart
     let api_post_multipart = common_api.make_api_multipart(
