@@ -111,6 +111,27 @@ impl<C> CommonAPI<C, Body> {
     }
 }
 
+impl<C> CommonAPI<C, Body>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+{
+    async fn _call_common(
+        &self,
+        method: Method,
+        relative_url: String,
+        content_type: String,
+        path_param: impl Into<PathParam>,
+        body: Body,
+    ) -> StdResult<Box<Body>, Box<dyn StdError>> {
+        let req =
+            self.simple_api
+                .make_request(method, relative_url, content_type, path_param, body)?;
+        let body = self.simple_api.simple_http.request(req).await??.into_body();
+
+        Ok(Box::new(body))
+    }
+}
+
 // APIResponseOnly API with only response options
 pub struct APIResponseOnly<R, C, B = Body>(APINoBody<R, C, B>);
 impl<R, C> APIResponseOnly<R, C, Body>
@@ -152,23 +173,18 @@ where
     where
         Body: Default,
     {
-        let req = self.base.simple_api.make_request(
-            self.method.clone(),
-            self.relative_url.clone(),
-            self.content_type.clone(),
-            path_param,
-            Body::default(),
-        )?;
-
         let body = self
             .base
-            .simple_api
-            .simple_http
-            .request(req)
-            .await??
-            .into_body();
+            ._call_common(
+                self.method.clone(),
+                self.relative_url.clone(),
+                self.content_type.clone(),
+                path_param,
+                Body::default(),
+            )
+            .await?;
         // let mut target = Box::new(target);
-        let body = Box::new(body);
+        // let body = Box::new(body);
         self.response_deserializer
             .decode(body.as_ref(), target.as_mut())?;
 
@@ -203,23 +219,19 @@ where
         Body: Default,
     {
         // let mut sent_body = Box::new(sent_body);
-        let req = self.base.simple_api.make_request(
-            self.method.clone(),
-            self.relative_url.clone(),
-            self.content_type.clone(),
-            path_param,
-            self.request_serializer.encode(sent_body.as_ref())?,
-        )?;
-
         let body = self
             .base
-            .simple_api
-            .simple_http
-            .request(req)
-            .await??
-            .into_body();
+            ._call_common(
+                self.method.clone(),
+                self.relative_url.clone(),
+                self.content_type.clone(),
+                path_param,
+                self.request_serializer.encode(sent_body.as_ref())?,
+            )
+            .await?;
+
         // let mut target = Box::new(target);
-        let body = Box::new(body);
+        // let body = Box::new(body);
         self.response_deserializer
             .decode(body.as_ref(), target.as_mut())?;
 
@@ -255,23 +267,19 @@ where
         // let mut sent_body = Box::new(sent_body);
         let (content_type_with_boundary, sent_body) =
             self.request_serializer.encode(sent_body.as_ref())?;
-        let req = self.base.simple_api.make_request(
-            self.method.clone(),
-            self.relative_url.clone(),
-            content_type_with_boundary,
-            path_param,
-            sent_body,
-        )?;
-
         let body = self
             .base
-            .simple_api
-            .simple_http
-            .request(req)
-            .await??
-            .into_body();
+            ._call_common(
+                self.method.clone(),
+                self.relative_url.clone(),
+                content_type_with_boundary,
+                path_param,
+                sent_body,
+            )
+            .await?;
+
         // let mut target = Box::new(target);
-        let body = Box::new(body);
+        // let body = Box::new(body);
         self.response_deserializer
             .decode(body.as_ref(), target.as_mut())?;
 
