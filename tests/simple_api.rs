@@ -129,6 +129,8 @@ async fn test_simple_api_common() {
             .ok()
             .unwrap(),
     );
+    // Setup timeout_millisecond
+    common_api.set_timeout_millisecond(10 * 1000);
 
     let mut header_map = common_api.get_default_header_clone();
     header_map = simple_http::add_header_authentication_bearer(header_map, "MY_TOKEN")

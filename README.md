@@ -71,7 +71,7 @@ serde_json = { version = "^1.0", optional = true }
 
 # Usage
 
-## Setup BaseURL/Header/Intercept/Serializer/Deserializer
+## Setup: BaseURL/Timeout/Header, Intercept/Serializer/Deserializer
 
 Example:
 
@@ -108,6 +108,8 @@ let common_api = simple_api::CommonAPI::new();
 
 // Setup base_url
 common_api.set_base_url(url::Url::parse("http://localhost:3000").ok().unwrap());
+// Setup timeout_millisecond
+common_api.set_timeout_millisecond(10 * 1000);
 
 // Add common headers for Authentication or other usages
 let mut header_map = common_api.get_default_header_clone();
