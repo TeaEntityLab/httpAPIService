@@ -20,7 +20,9 @@ async fn test_simple_api_common() {
     // use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
+    use hyper_api_service::path_param;
     use hyper_api_service::simple_api;
+    use hyper_api_service::simple_http;
 
     #[derive(Serialize, Deserialize, Debug)]
     struct Product {
@@ -128,6 +130,12 @@ async fn test_simple_api_common() {
             .unwrap(),
     );
 
+    let mut header_map = common_api.get_default_header_clone();
+    header_map = simple_http::add_header_authentication_bearer(header_map, "MY_TOKEN")
+        .ok()
+        .unwrap();
+    common_api.set_default_header(header_map);
+
     let json_serializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_SERIALIZER);
     let json_deserializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_DESERIALIZER);
     let return_type_marker = &Product::default();
@@ -149,7 +157,7 @@ async fn test_simple_api_common() {
         let serialized = serde_json::to_string(model.as_ref()).unwrap();
         println!("serialized: {:?}", serialized);
         assert_eq!(
-            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: GET, uri: /products, version: HTTP/1.1, headers: {\\\"host\\\": \\\"127.0.0.1:3400\\\"} }\"}",
+            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: GET, uri: /products, version: HTTP/1.1, headers: {\\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"host\\\": \\\"127.0.0.1:3400\\\"} }\"}",
             serialized
         );
     }
@@ -175,7 +183,7 @@ async fn test_simple_api_common() {
         let serialized = serde_json::to_string(model.as_ref()).unwrap();
         println!("serialized: {:?}", serialized);
         assert_eq!(
-            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: DELETE, uri: /products/3, version: HTTP/1.1, headers: {\\\"host\\\": \\\"127.0.0.1:3400\\\"} }\"}",
+            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: DELETE, uri: /products/3, version: HTTP/1.1, headers: {\\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"host\\\": \\\"127.0.0.1:3400\\\"} }\"}",
             serialized
         );
     }
@@ -195,12 +203,10 @@ async fn test_simple_api_common() {
             age: "5 month".to_string(),
             meta: Some("123".to_string()),
         };
-        let path_param = [("id".into(), "5".into())]
-            .iter()
-            .cloned()
-            .collect::<simple_api::PathParam>();
 
-        let resp = api_put_product.call(path_param, sent_body).await;
+        let resp = api_put_product
+            .call(path_param!["id" => "5"], sent_body)
+            .await;
         let err = resp.as_ref().err();
         println!("{:?}", err);
         assert_eq!(false, resp.is_err());
@@ -208,7 +214,7 @@ async fn test_simple_api_common() {
         let serialized = serde_json::to_string(model.as_ref()).unwrap();
         println!("serialized: {:?}", serialized);
         assert_eq!(
-            "{\"name\":\"Alien  modified\",\"age\":\"3 years\",\"meta\":\"Parts { method: PUT, uri: /products/5, version: HTTP/1.1, headers: {\\\"content-type\\\": \\\"application/json\\\", \\\"host\\\": \\\"127.0.0.1:3400\\\", \\\"content-length\\\": \\\"46\\\"} }\"}",
+            "{\"name\":\"Alien  modified\",\"age\":\"3 years\",\"meta\":\"Parts { method: PUT, uri: /products/5, version: HTTP/1.1, headers: {\\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"content-type\\\": \\\"application/json\\\", \\\"host\\\": \\\"127.0.0.1:3400\\\", \\\"content-length\\\": \\\"46\\\"} }\"}",
             serialized
         );
     }

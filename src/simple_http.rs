@@ -8,7 +8,7 @@ use http::method::Method;
 // use futures::TryStreamExt;
 // use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, HttpConnector};
-use hyper::header::CONTENT_TYPE;
+use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
 #[cfg(feature = "multipart")]
 use mime::MULTIPART_FORM_DATA;
@@ -71,6 +71,23 @@ impl Default for SimpleHTTP<HttpConnector, Body> {
     fn default() -> SimpleHTTP<HttpConnector, Body> {
         SimpleHTTP::new()
     }
+}
+
+pub fn add_header_authentication(
+    mut header_map: HeaderMap,
+    token: impl Into<String>,
+) -> StdResult<HeaderMap, Box<dyn StdError>> {
+    let str = token.into();
+    header_map.insert("Authorization", HeaderValue::from_str(&str)?);
+
+    Ok(header_map)
+}
+
+pub fn add_header_authentication_bearer(
+    header_map: HeaderMap,
+    token: impl Into<String>,
+) -> StdResult<HeaderMap, Box<dyn StdError>> {
+    return add_header_authentication(header_map, "Bearer ".to_string() + &token.into());
 }
 
 #[cfg(feature = "multipart")]

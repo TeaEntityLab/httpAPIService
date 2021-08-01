@@ -57,6 +57,8 @@ use std::sync::Arc;
 use hyper::Method;
 
 use hyper_api_service::simple_api;
+use hyper_api_service::simple_http;
+use hyper_api_service::path_param;
 
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
@@ -79,7 +81,15 @@ let return_type_marker = &Product::default();
 
 let common_api = simple_api::CommonAPI::new();
 
+// Setup base_url
 common_api.set_base_url(url::Url::parse("http://localhost:3000").ok().unwrap());
+
+// Add common headers for Authentication or other usages
+let mut header_map = common_api.get_default_header_clone();
+header_map = simple_http::add_header_authentication_bearer(header_map, "MY_TOKEN")
+    .ok()
+    .unwrap();
+common_api.set_default_header(header_map);
 
 // GET
 let api_get_product = common_api.make_api_no_body(
@@ -88,12 +98,16 @@ let api_get_product = common_api.make_api_no_body(
     json_deserializer.clone(),
     return_type_marker,
 );
-let path_param = [("id".into(), "3".into())]
-    .iter()
-    .cloned()
-    .collect::<simple_api::PathParam>();
-let resp = api_get_product.call(path_param).await;
-let model = resp.ok().unwrap();
+
+// NOTE: You can use the HashMap<String, String> directly
+// or path_param!["key1" => "val1", "key2" => "val2"])
+
+// let path_param = [("id".into(), "3".into())]
+//     .iter()
+//     .cloned()
+//     .collect::<simple_api::PathParam>();
+let resp = api_get_product.call(path_param!["id" => "3"]).await;
+let model = resp.ok().unwrap(); // The deserialized model Product is here.
 
 // POST
 
@@ -110,12 +124,7 @@ let sent_body = Product {
     name: "Alien ".to_string(),
     age: "5 month".to_string(),
 };
-let path_param = [("id".into(), "5".into())]
-    .iter()
-    .cloned()
-    .collect::<simple_api::PathParam>();
-
-let resp = api_post_product.call(path_param, sent_body).await;
+let resp = api_post_product.call(path_param!["id" => "5"], sent_body).await;
 let model = resp.ok().unwrap();
 
 // Multipart

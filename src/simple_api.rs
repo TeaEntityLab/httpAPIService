@@ -11,7 +11,7 @@ use bytes::Bytes;
 use formdata::FormData;
 use http::method::Method;
 use hyper::body::HttpBody;
-use hyper::client::{connect::Connect, HttpConnector};
+use hyper::client::{connect::Connect, Client, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::{Body, HeaderMap, Request, Uri};
 #[cfg(feature = "for_serde")]
@@ -28,6 +28,15 @@ use super::simple_http::SimpleHTTP;
 `PathParam` Path params for API usages
 */
 pub type PathParam = HashMap<String, String>;
+
+#[macro_export]
+macro_rules! path_param {
+    ($( $key: expr => $val: expr ),*) => {{
+         let mut map = hyper_api_service::simple_api::PathParam::new();
+         $( map.insert($key.into(), $val.into()); )*
+         map
+    }}
+}
 
 /*
 `CommonAPI` implements `make_api_response_only()`/`make_api_no_body()`/`make_api_has_body()`,
@@ -49,6 +58,32 @@ impl<C, B> CommonAPI<C, B> {
 
     pub fn set_base_url(&self, url: Url) {
         self.simple_api.lock().unwrap().base_url = url;
+    }
+    pub fn get_base_url_clone(&self) -> Url {
+        self.simple_api.lock().unwrap().base_url.clone()
+    }
+    pub fn set_default_header(&self, header_map: HeaderMap) {
+        self.simple_api.lock().unwrap().default_header = header_map;
+    }
+    pub fn get_default_header_clone(&self) -> HeaderMap {
+        self.simple_api.lock().unwrap().default_header.clone()
+    }
+    pub fn set_client(&self, client: Client<C, B>) {
+        self.simple_api.lock().unwrap().simple_http.client = client;
+    }
+    pub fn set_timeout_millisecond(&self, timeout_millisecond: u64) {
+        self.simple_api
+            .lock()
+            .unwrap()
+            .simple_http
+            .timeout_millisecond = timeout_millisecond;
+    }
+    pub fn get_timeout_millisecond(&self) -> u64 {
+        self.simple_api
+            .lock()
+            .unwrap()
+            .simple_http
+            .timeout_millisecond
     }
 }
 
