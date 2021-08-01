@@ -1,6 +1,6 @@
 [package]
 name = "hyper_api_service"
-version = "0.1.5"
+version = "0.1.6"
 license = "MIT"
 authors = ["JunYi JohnTeee Lee <johnteee@gmail.com>"]
 edition = "2018"
@@ -28,14 +28,14 @@ multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
 
 test_runtime = [
-"multipart", "for_serde", "fp_rust",
+"multipart", "for_serde", "fp_rust", "hyper/full",
 ]
 
 [dependencies]
 
 # Required
-hyper = { version = "^0.14.0", features = ["full"] }
-tokio = { version = "^1.8.0", features = ["full"] }
+hyper = { version = "^0.14.0", features = ["client", "http1", "http2", "stream", "tcp",] }
+tokio = { version = "^1.8.0", features = ["time", "macros",] }
 bytes = "^1.0.0"
 http = "^0.2.4"
 futures="^0.3.0"
@@ -51,7 +51,7 @@ serde = { version = "^1.0", features = ["derive"], optional = true }
 serde_json = { version = "^1.0", optional = true }
 
 # test_runtime
-fp_rust={ version = "^0.1.40", optional = true }
+fp_rust={ version = "^0.2.4", features = ["for_futures"], optional = true }
 
 [[test]]
 name = "simple_http"

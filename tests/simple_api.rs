@@ -16,8 +16,6 @@ async fn test_simple_api_common() {
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
     use serde::{Deserialize, Serialize};
-    use tokio::sync::Notify;
-    // use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::path_param;
@@ -40,7 +38,7 @@ async fn test_simple_api_common() {
         }
     }
 
-    let hyper_latch = Arc::new(Notify::new());
+    let hyper_latch = CountDownLatch::new(1);
     let started_latch = CountDownLatch::new(1);
 
     let addr: SocketAddr = ([127, 0, 0, 1], 3400).into();
@@ -101,7 +99,8 @@ async fn test_simple_api_common() {
         // hyper_latch_for_thread.countdown();
         let _ = server
             .with_graceful_shutdown(async move {
-                hyper_latch_for_thread.notified().await;
+                hyper_latch_for_thread.await;
+                println!("!!!!!!!!!");
             })
             .await;
     });
@@ -229,7 +228,7 @@ async fn test_simple_api_common() {
     started_latch.wait();
     println!("REQ",);
 
-    hyper_latch.notify_one();
+    hyper_latch.countdown();
 
     println!("OK");
 }
@@ -248,14 +247,12 @@ async fn test_simple_api_formdata() {
     use futures::executor::block_on;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{Body, Method, Request, Response, Server};
-    use tokio::sync::Notify;
-    // use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::simple_api;
     use hyper_api_service::simple_http;
 
-    let hyper_latch = Arc::new(Notify::new());
+    let hyper_latch = CountDownLatch::new(1);
     let started_latch = CountDownLatch::new(1);
 
     let addr: SocketAddr = ([127, 0, 0, 1], 3300).into();
@@ -313,7 +310,7 @@ async fn test_simple_api_formdata() {
         // hyper_latch_for_thread.countdown();
         let _ = server
             .with_graceful_shutdown(async move {
-                hyper_latch_for_thread.notified().await;
+                hyper_latch_for_thread.await;
             })
             .await;
     });
@@ -382,7 +379,7 @@ async fn test_simple_api_formdata() {
     started_latch.wait();
     println!("REQ",);
 
-    hyper_latch.notify_one();
+    hyper_latch.countdown();
 
     println!("OK");
 }

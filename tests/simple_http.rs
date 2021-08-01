@@ -16,18 +16,15 @@ fn connect(addr: &SocketAddr) -> std::io::Result<TcpStream> {
 async fn test_get_header() {
     extern crate fp_rust;
     use std::net::SocketAddr;
-    use std::sync::Arc;
 
     use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
-    use tokio::sync::Notify;
-    // use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::simple_http::SimpleHTTP;
 
-    let hyper_latch = Arc::new(Notify::new());
+    let hyper_latch = CountDownLatch::new(1);
     let started_latch = CountDownLatch::new(1);
 
     let addr: SocketAddr = ([127, 0, 0, 1], 3000).into();
@@ -68,7 +65,7 @@ async fn test_get_header() {
         // hyper_latch_for_thread.countdown();
         let _ = server
             .with_graceful_shutdown(async move {
-                hyper_latch_for_thread.notified().await;
+                hyper_latch_for_thread.await;
             })
             .await;
     });
@@ -115,7 +112,7 @@ async fn test_get_header() {
     started_latch.wait();
     println!("REQ",);
 
-    hyper_latch.notify_one();
+    hyper_latch.countdown();
 
     println!("OK");
 }
@@ -129,21 +126,18 @@ async fn test_formdata() {
 
     use std::iter::{FromIterator, IntoIterator};
     use std::net::SocketAddr;
-    use std::sync::Arc;
 
     use formdata::FormData;
     use futures::executor::block_on;
     use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{body, Body, Method, Request, Response, Server};
-    use tokio::sync::Notify;
-    // use tokio::time::{sleep, Duration};
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::simple_http;
     use hyper_api_service::simple_http::SimpleHTTP;
 
-    let hyper_latch = Arc::new(Notify::new());
+    let hyper_latch = CountDownLatch::new(1);
     let started_latch = CountDownLatch::new(1);
 
     let addr: SocketAddr = ([127, 0, 0, 1], 3300).into();
@@ -201,7 +195,7 @@ async fn test_formdata() {
         // hyper_latch_for_thread.countdown();
         let _ = server
             .with_graceful_shutdown(async move {
-                hyper_latch_for_thread.notified().await;
+                hyper_latch_for_thread.await;
             })
             .await;
     });
@@ -276,7 +270,7 @@ async fn test_formdata() {
     started_latch.wait();
     println!("REQ",);
 
-    hyper_latch.notify_one();
+    hyper_latch.countdown();
 
     println!("OK");
 }
