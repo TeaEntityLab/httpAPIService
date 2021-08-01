@@ -1,8 +1,10 @@
 use std::collections::{HashMap, VecDeque};
 use std::error::Error as StdError;
 use std::result::Result as StdResult;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use http::method::Method;
 // use futures::TryStreamExt;
@@ -24,7 +26,51 @@ use multer::Multipart;
 pub const DEFAULT_TIMEOUT_MILLISECOND: u64 = 30 * 1000;
 
 pub trait Interceptor<B> {
+    fn get_id(&self) -> String;
     fn intercept(&self, request: &mut Request<B>) -> StdResult<(), Box<dyn StdError>>;
+}
+
+#[derive(Clone)]
+pub struct InterceptorFunc<B = Body> {
+    id: String,
+    func: Arc<
+        Mutex<
+            dyn FnMut(&mut Request<B>) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
+        >,
+    >,
+}
+impl<B> InterceptorFunc<B> {
+    /**
+    Generate a new `InterceptorFunc` with the given `FnMut`.
+    # Arguments
+    * `func` - The given `FnMut`.
+    */
+    pub fn new<T>(func: T) -> InterceptorFunc<B>
+    where
+        T: FnMut(&mut Request<B>) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
+    {
+        InterceptorFunc {
+            id: Self::generate_id(),
+            func: Arc::new(Mutex::new(func)),
+        }
+    }
+
+    fn generate_id() -> String {
+        let since_the_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+
+        format!("{:?}{:?}", thread::current().id(), since_the_epoch)
+    }
+}
+impl<B> Interceptor<B> for InterceptorFunc<B> {
+    fn get_id(&self) -> String {
+        return self.id.clone();
+    }
+    fn intercept(&self, request: &mut Request<B>) -> StdResult<(), Box<dyn StdError>> {
+        let func = &mut *self.func.lock().unwrap();
+        (func)(request)
+    }
 }
 
 pub type SimpleHTTPResponse<B> = StdResult<Result<Response<B>>, Box<dyn StdError>>;
@@ -46,6 +92,27 @@ impl<C, B> SimpleHTTP<C, B> {
             client,
             interceptors,
             timeout_millisecond,
+        }
+    }
+
+    pub fn add_interceptor(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+        self.interceptors.push_back(interceptor);
+    }
+    pub fn add_interceptor_front(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+        self.interceptors.push_front(interceptor);
+    }
+    pub fn delete_interceptor(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+        let id;
+        {
+            id = interceptor.get_id();
+        }
+
+        for (index, obs) in self.interceptors.clone().iter().enumerate() {
+            if obs.get_id() == id {
+                // println!("delete_interceptor({});", interceptor);
+                self.interceptors.remove(index);
+                return;
+            }
         }
     }
 }
@@ -172,6 +239,18 @@ pub async fn multer_multipart_to_hash_map(
     }
 
     Ok(result)
+}
+
+impl<C> SimpleHTTP<C, Body> {
+    pub fn add_interceptor_fn(
+        &mut self,
+        func: impl FnMut(&mut Request<Body>) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
+    ) -> Arc<InterceptorFunc<Body>> {
+        let interceptor = Arc::new(InterceptorFunc::new(func));
+        self.add_interceptor(interceptor.clone());
+
+        interceptor
+    }
 }
 
 impl<C> SimpleHTTP<C, Body>

@@ -123,7 +123,7 @@ async fn test_simple_api_common() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let common_api = simple_api::CommonAPI::new();
+    let mut common_api = simple_api::CommonAPI::new();
     common_api.set_base_url(
         url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
             .ok()
@@ -135,6 +135,11 @@ async fn test_simple_api_common() {
         .ok()
         .unwrap();
     common_api.set_default_header(header_map);
+
+    common_api.add_interceptor_fn(|req| {
+        println!("REQ_CONTENT: {:?}", req);
+        Ok(())
+    });
 
     let json_serializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_SERIALIZER);
     let json_deserializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_DESERIALIZER);

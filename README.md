@@ -1,23 +1,44 @@
 # hyperAPIService
 
+[![tag](https://img.shields.io/github/tag/TeaEntityLab/hyperAPIService.svg)](https://github.com/TeaEntityLab/hyperAPIService)
+[![Crates.io](https://img.shields.io/crates/d/hyper_api_service.svg)](https://crates.io/crates/hyper_api_service)
+[![Travis CI Build Status](https://api.travis-ci.org/TeaEntityLab/hyperAPIService.svg?branch=master)](https://travis-ci.org/TeaEntityLab/hyperAPIService)
+[![docs](https://img.shields.io/badge/docs-online-5023dd.svg)](https://docs.rs/hyper_api_service/)
+
+[![license](https://img.shields.io/github/license/TeaEntityLab/hyperAPIService.svg?style=social&label=License)](https://github.com/TeaEntityLab/hyperAPIService)
+[![stars](https://img.shields.io/github/stars/TeaEntityLab/hyperAPIService.svg?style=social&label=Stars)](https://github.com/TeaEntityLab/hyperAPIService)
+[![forks](https://img.shields.io/github/forks/TeaEntityLab/hyperAPIService.svg?style=social&label=Fork)](https://github.com/TeaEntityLab/hyperAPIService)
+
+
 A Retrofit inspired implementation for Rust.
 
-## Features
+# Why
+
+I love Retrofit(for java), WebServiceAPI-style coding.
+
+However it's hard to implement them in Rust, and there're few libraries to achieve parts of them.
+
+Thus I implemented hyperAPIService. I hope you would like it :)
+
+
+# Features
 
 * Retrofit-like API for WebService Restful API
-  * Request: Serialize Struct to hyper HTTPBody
-  * Response: Deserialize hyper HTTPBody to Struct
+  * Request:
+    * Intercept the request: *`InterceptorFunc`* (struct) / *`Interceptor`* (trait)
+    * Serialize Struct to hyper HTTPBody: *`BodySerializer`* (trait)
+  * Response:
+    * Deserialize hyper HTTPBody to Struct: *`BodyDeserializer`* (trait)
 * Optional:
-  * *SerdeJsonSerializer*/*SerdeJsonDeserializer* **feature: for_serde**
-  * *MultipartSerializer* **feature: multipart**
+  * *`SerdeJsonSerializer`*/*`SerdeJsonDeserializer`* **feature: for_serde**
+  * *`MultipartSerializer`* **feature: multipart**
 
 Note:
 * If you want to bypass
-  * Serialization, you can use *DummyBypassSerializer*
-  * Deserialization, you can use *DummyBypassDeserializer*
+  * Serialization, you can use *`DummyBypassSerializer`*
+  * Deserialization, you can use *`DummyBypassDeserializer`*
 
-
-## Dependencies
+# Dependencies
 
 ```toml
 [features]
@@ -48,7 +69,11 @@ serde = { version = "^1.0", features = ["derive"], optional = true }
 serde_json = { version = "^1.0", optional = true }
 ```
 
-## Example:
+# Usage
+
+## Setup BaseURL/Header/Intercept/Serializer/Deserializer
+
+Example:
 
 ```rust
 
@@ -91,6 +116,20 @@ header_map = simple_http::add_header_authentication_bearer(header_map, "MY_TOKEN
     .unwrap();
 common_api.set_default_header(header_map);
 
+// Add interceptor for observing Requests before connections
+common_api.add_interceptor_fn(|req| {
+    println!("REQ_CONTENT: {:?}", req);
+    Ok(())
+});
+
+```
+
+## GET/POST
+
+Example:
+
+```rust
+
 // GET
 let api_get_product = common_api.make_api_no_body(
     Method::GET,
@@ -126,6 +165,14 @@ let sent_body = Product {
 };
 let resp = api_post_product.call(path_param!["id" => "5"], sent_body).await;
 let model = resp.ok().unwrap();
+
+```
+
+## Multipart
+
+Example:
+
+```rust
 
 // Multipart
 

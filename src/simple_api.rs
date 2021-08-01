@@ -21,7 +21,7 @@ use serde_json;
 use url::Url;
 
 use super::simple_http;
-use super::simple_http::SimpleHTTP;
+use super::simple_http::{Interceptor, InterceptorFunc, SimpleHTTP};
 // use simple_http;
 
 /*
@@ -84,6 +84,41 @@ impl<C, B> CommonAPI<C, B> {
             .unwrap()
             .simple_http
             .timeout_millisecond
+    }
+
+    pub fn add_interceptor(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+        self.simple_api
+            .lock()
+            .unwrap()
+            .simple_http
+            .add_interceptor(interceptor);
+    }
+    pub fn add_interceptor_front(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+        self.simple_api
+            .lock()
+            .unwrap()
+            .simple_http
+            .add_interceptor_front(interceptor);
+    }
+    pub fn delete_interceptor(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+        self.simple_api
+            .lock()
+            .unwrap()
+            .simple_http
+            .delete_interceptor(interceptor);
+    }
+}
+
+impl<C> CommonAPI<C, Body> {
+    pub fn add_interceptor_fn(
+        &mut self,
+        func: impl FnMut(&mut Request<Body>) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
+    ) -> Arc<InterceptorFunc<Body>> {
+        self.simple_api
+            .lock()
+            .unwrap()
+            .simple_http
+            .add_interceptor_fn(func)
     }
 }
 
