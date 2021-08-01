@@ -213,16 +213,39 @@ where
     async fn _call_common(
         &self,
         method: Method,
+        header: Option<HeaderMap>,
         relative_url: impl Into<String>,
         content_type: impl Into<String>,
         path_param: impl Into<PathParam>,
         body: Body,
     ) -> StdResult<Box<Body>, Box<dyn StdError>> {
         let simple_api = self.simple_api.lock().unwrap();
-        let req = simple_api.make_request(method, relative_url, content_type, path_param, body)?;
+        let mut req =
+            simple_api.make_request(method, relative_url, content_type, path_param, body)?;
+
+        if let Some(header) = header {
+            let header_existing = req.headers_mut();
+            for (k, v) in header.iter() {
+                header_existing.insert(k, v.clone());
+            }
+        }
+
         let body = simple_api.simple_http.request(req).await??.into_body();
 
         Ok(Box::new(body))
+    }
+
+    pub async fn request(
+        &self,
+        method: Method,
+        header: Option<HeaderMap>,
+        relative_url: impl Into<String>,
+        content_type: impl Into<String>,
+        path_param: impl Into<PathParam>,
+        body: Body,
+    ) -> StdResult<Box<Body>, Box<dyn StdError>> {
+        self._call_common(method, header, relative_url, content_type, path_param, body)
+            .await
     }
 }
 
@@ -240,7 +263,18 @@ where
     where
         Body: Default,
     {
-        self.0.call(HashMap::new()).await
+        self.call_with_header_additional(None).await
+    }
+    pub async fn call_with_header_additional(
+        &self,
+        header: Option<HeaderMap>,
+    ) -> StdResult<Box<R>, Box<dyn StdError>>
+    where
+        Body: Default,
+    {
+        self.0
+            .call_with_header_additional(header, HashMap::new())
+            .await
     }
 }
 
@@ -268,10 +302,22 @@ where
     where
         Body: Default,
     {
+        self.call_with_header_additional(None, path_param).await
+    }
+
+    pub async fn call_with_header_additional(
+        &self,
+        header: Option<HeaderMap>,
+        path_param: impl Into<PathParam>,
+    ) -> StdResult<Box<R>, Box<dyn StdError>>
+    where
+        Body: Default,
+    {
         let mut body = self
             .base
             ._call_common(
                 self.method.clone(),
+                header,
                 self.relative_url.clone(),
                 self.content_type.clone(),
                 path_param,
@@ -314,11 +360,25 @@ where
     where
         Body: Default,
     {
+        self.call_with_header_additional(None, path_param, sent_body)
+            .await
+    }
+
+    pub async fn call_with_header_additional(
+        &self,
+        header: Option<HeaderMap>,
+        path_param: impl Into<PathParam>,
+        sent_body: T,
+    ) -> StdResult<Box<R>, Box<dyn StdError>>
+    where
+        Body: Default,
+    {
         // let mut sent_body = Box::new(sent_body);
         let mut body = self
             .base
             ._call_common(
                 self.method.clone(),
+                header,
                 self.relative_url.clone(),
                 self.content_type.clone(),
                 path_param,
@@ -361,12 +421,26 @@ where
     where
         Body: Default,
     {
+        self.call_with_header_additional(None, path_param, sent_body)
+            .await
+    }
+
+    pub async fn call_with_header_additional(
+        &self,
+        header: Option<HeaderMap>,
+        path_param: impl Into<PathParam>,
+        sent_body: T,
+    ) -> StdResult<Box<R>, Box<dyn StdError>>
+    where
+        Body: Default,
+    {
         // let mut sent_body = Box::new(sent_body);
         let (content_type_with_boundary, sent_body) = self.request_serializer.encode(&sent_body)?;
         let mut body = self
             .base
             ._call_common(
                 self.method.clone(),
+                header,
                 self.relative_url.clone(),
                 content_type_with_boundary,
                 path_param,

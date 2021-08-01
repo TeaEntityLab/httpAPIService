@@ -24,8 +24,12 @@ Thus I implemented hyperAPIService. I hope you would like it :)
 # Features
 
 * Retrofit-like API for WebService Restful API
-  * Request:
+  * Common:
     * Intercept the request: *`InterceptorFunc`* (struct) / *`Interceptor`* (trait)
+    * Shared Connection Timeout: *`set_timeout_millisecond()`*
+    * Shared Default Header: *`set_default_header()`*
+    * Shared Client: *`set_client()`*
+  * Request:
     * Serialize Struct to hyper HTTPBody: *`BodySerializer`* (trait)
   * Response:
     * Deserialize hyper HTTPBody to Struct: *`BodyDeserializer`* (trait)
