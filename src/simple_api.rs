@@ -28,9 +28,29 @@ use super::simple_http::{Interceptor, InterceptorFunc, SimpleHTTP};
 `PathParam` Path params for API usages
 */
 pub type PathParam = HashMap<String, String>;
+/*
+`QueryParam` Query params for API usages
+*/
+pub type QueryParam = HashMap<String, String>;
 
 #[macro_export]
 macro_rules! path_param {
+    ($( $key: expr => $val: expr ),*) => {{
+         hyper_api_service::hash_map_string!(
+             $( $key => $val )*
+         )
+    }}
+}
+#[macro_export]
+macro_rules! query_param {
+    ($( $key: expr => $val: expr ),*) => {{
+         hyper_api_service::hash_map_string!(
+             $( $key => $val )*
+         )
+    }}
+}
+#[macro_export]
+macro_rules! hash_map_string {
     ($( $key: expr => $val: expr ),*) => {{
          let mut map = hyper_api_service::simple_api::PathParam::new();
          $( map.insert($key.into(), $val.into()); )*
@@ -216,12 +236,19 @@ where
         header: Option<HeaderMap>,
         relative_url: impl Into<String>,
         content_type: impl Into<String>,
-        path_param: impl Into<PathParam>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
         body: Body,
     ) -> StdResult<Box<Body>, Box<dyn StdError>> {
         let simple_api = self.simple_api.lock().unwrap();
-        let mut req =
-            simple_api.make_request(method, relative_url, content_type, path_param, body)?;
+        let mut req = simple_api.make_request(
+            method,
+            relative_url,
+            content_type,
+            path_param,
+            query_param,
+            body,
+        )?;
 
         if let Some(header) = header {
             let header_existing = req.headers_mut();
@@ -235,17 +262,49 @@ where
         Ok(Box::new(body))
     }
 
-    pub async fn request(
+    pub async fn do_request(
         &self,
         method: Method,
         header: Option<HeaderMap>,
         relative_url: impl Into<String>,
         content_type: impl Into<String>,
-        path_param: impl Into<PathParam>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
         body: Body,
     ) -> StdResult<Box<Body>, Box<dyn StdError>> {
-        self._call_common(method, header, relative_url, content_type, path_param, body)
-            .await
+        self._call_common(
+            method,
+            header,
+            relative_url,
+            content_type,
+            path_param,
+            query_param,
+            body,
+        )
+        .await
+    }
+
+    pub async fn do_request_multipart(
+        &self,
+        method: Method,
+        header: Option<HeaderMap>,
+        relative_url: impl Into<String>,
+        // content_type: impl Into<String>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
+        body: FormData,
+    ) -> StdResult<Box<Body>, Box<dyn StdError>> {
+        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER.encode(&body)?;
+        self._call_common(
+            method,
+            header,
+            relative_url,
+            content_type,
+            path_param,
+            query_param,
+            body,
+        )
+        .await
     }
 }
 
@@ -263,17 +322,18 @@ where
     where
         Body: Default,
     {
-        self.call_with_header_additional(None).await
+        self.call_with_options(None, None::<QueryParam>).await
     }
-    pub async fn call_with_header_additional(
+    pub async fn call_with_options(
         &self,
         header: Option<HeaderMap>,
+        query_param: Option<impl Into<QueryParam>>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         Body: Default,
     {
         self.0
-            .call_with_header_additional(header, HashMap::new())
+            .call_with_options(header, None::<PathParam>, query_param)
             .await
     }
 }
@@ -295,20 +355,19 @@ where
     // B::Data: Send,
     // B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
-    pub async fn call(
-        &self,
-        path_param: impl Into<PathParam>,
-    ) -> StdResult<Box<R>, Box<dyn StdError>>
+    pub async fn call(&self, path_param: Option<PathParam>) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         Body: Default,
     {
-        self.call_with_header_additional(None, path_param).await
+        self.call_with_options(None, path_param, None::<QueryParam>)
+            .await
     }
 
-    pub async fn call_with_header_additional(
+    pub async fn call_with_options(
         &self,
         header: Option<HeaderMap>,
-        path_param: impl Into<PathParam>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         Body: Default,
@@ -321,6 +380,7 @@ where
                 self.relative_url.clone(),
                 self.content_type.clone(),
                 path_param,
+                query_param,
                 Body::default(),
             )
             .await?;
@@ -354,20 +414,21 @@ where
 {
     pub async fn call(
         &self,
-        path_param: impl Into<PathParam>,
+        path_param: Option<impl Into<PathParam>>,
         sent_body: T,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         Body: Default,
     {
-        self.call_with_header_additional(None, path_param, sent_body)
+        self.call_with_options(None, path_param, None::<QueryParam>, sent_body)
             .await
     }
 
-    pub async fn call_with_header_additional(
+    pub async fn call_with_options(
         &self,
         header: Option<HeaderMap>,
-        path_param: impl Into<PathParam>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
         sent_body: T,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
@@ -382,6 +443,7 @@ where
                 self.relative_url.clone(),
                 self.content_type.clone(),
                 path_param,
+                query_param,
                 self.request_serializer.encode(&sent_body)?,
             )
             .await?;
@@ -415,20 +477,21 @@ where
 {
     pub async fn call(
         &self,
-        path_param: impl Into<PathParam>,
+        path_param: Option<impl Into<PathParam>>,
         sent_body: T,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         Body: Default,
     {
-        self.call_with_header_additional(None, path_param, sent_body)
+        self.call_with_options(None, path_param, None::<QueryParam>, sent_body)
             .await
     }
 
-    pub async fn call_with_header_additional(
+    pub async fn call_with_options(
         &self,
         header: Option<HeaderMap>,
-        path_param: impl Into<PathParam>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
         sent_body: T,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
@@ -444,6 +507,7 @@ where
                 self.relative_url.clone(),
                 content_type_with_boundary,
                 path_param,
+                query_param,
                 sent_body,
             )
             .await?;
@@ -594,18 +658,26 @@ where
         method: Method,
         relative_url: impl Into<String>,
         content_type: impl Into<String>,
-        path_param: impl Into<PathParam>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
         body: B,
     ) -> StdResult<Request<B>, Box<dyn StdError>> {
         let mut relative_url = relative_url.into();
-        for (k, v) in path_param.into().into_iter() {
-            relative_url = relative_url.replace(&("{".to_string() + &k + "}"), &v);
+        if let Some(path_param) = path_param {
+            for (k, v) in path_param.into().into_iter() {
+                relative_url = relative_url.replace(&("{".to_string() + &k + "}"), &v);
+            }
         }
 
         let mut req = Request::new(body);
         // Url
         match self.base_url.join(&relative_url) {
-            Ok(url) => {
+            Ok(mut url) => {
+                if let Some(query_param) = query_param {
+                    for (k, v) in query_param.into().into_iter() {
+                        url.set_query(Some(&(k + "=" + &v)));
+                    }
+                }
                 *req.uri_mut() = Uri::from_str(url.as_str())?;
             }
             Err(e) => return Err(Box::new(e)),
@@ -633,7 +705,8 @@ where
         method: Method,
         relative_url: impl Into<String>,
         // content_type: String,
-        path_param: impl Into<PathParam>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
         body: FormData,
     ) -> StdResult<Request<Body>, Box<dyn StdError>> {
         let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER.encode(&body)?;
@@ -646,6 +719,7 @@ where
             //     content_type
             // },
             path_param,
+            query_param,
             body,
         )
     }

@@ -151,7 +151,7 @@ let api_get_product = common_api.make_api_no_body(
 //     .iter()
 //     .cloned()
 //     .collect::<simple_api::PathParam>();
-let resp = api_get_product.call(path_param!["id" => "3"]).await;
+let resp = api_get_product.call(Some(path_param!["id" => "3"])).await;
 let model = resp.ok().unwrap(); // The deserialized model Product is here.
 
 // POST
@@ -169,7 +169,7 @@ let sent_body = Product {
     name: "Alien ".to_string(),
     age: "5 month".to_string(),
 };
-let resp = api_post_product.call(path_param!["id" => "5"], sent_body).await;
+let resp = api_post_product.call(Some(path_param!["id" => "5"]), sent_body).await;
 let model = resp.ok().unwrap();
 
 ```
@@ -201,7 +201,7 @@ let api_post_multipart = common_api.make_api_multipart(
 );
 
 let resp = api_post_multipart
-    .call(simple_api::PathParam::new(), form_data_origin)
+    .call(Some(simple_api::PathParam::new()), form_data_origin)
     .await;
 let model = resp.ok().unwrap();
 

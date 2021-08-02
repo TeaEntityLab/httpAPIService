@@ -18,9 +18,9 @@ async fn test_simple_api_common() {
     use serde::{Deserialize, Serialize};
 
     use fp_rust::sync::CountDownLatch;
-    use hyper_api_service::path_param;
     use hyper_api_service::simple_api;
     use hyper_api_service::simple_http;
+    use hyper_api_service::{path_param, query_param};
 
     #[derive(Serialize, Deserialize, Debug)]
     struct Product {
@@ -181,7 +181,9 @@ async fn test_simple_api_common() {
             .cloned()
             .collect::<simple_api::PathParam>();
 
-        let resp = api_delete_product.call(path_param).await;
+        let resp = api_delete_product
+            .call_with_options(None, Some(path_param), Some(query_param!("soft" => "true")))
+            .await;
         let err = resp.as_ref().err();
         println!("{:?}", err);
         assert_eq!(false, resp.is_err());
@@ -189,7 +191,7 @@ async fn test_simple_api_common() {
         let serialized = serde_json::to_string(model.as_ref()).unwrap();
         println!("serialized: {:?}", serialized);
         assert_eq!(
-            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: DELETE, uri: /products/3, version: HTTP/1.1, headers: {\\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"host\\\": \\\"127.0.0.1:3400\\\"} }\"}",
+            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: DELETE, uri: /products/3?soft=true, version: HTTP/1.1, headers: {\\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"host\\\": \\\"127.0.0.1:3400\\\"} }\"}",
             serialized
         );
     }
@@ -211,7 +213,7 @@ async fn test_simple_api_common() {
         };
 
         let resp = api_put_product
-            .call(path_param!["id" => "5"], sent_body)
+            .call(Some(path_param!["id" => "5"]), sent_body)
             .await;
         let err = resp.as_ref().err();
         println!("{:?}", err);
@@ -357,7 +359,7 @@ async fn test_simple_api_formdata() {
     );
 
     let resp = api_post_multipart
-        .call(simple_api::PathParam::new(), form_data_origin)
+        .call(Some(simple_api::PathParam::new()), form_data_origin)
         .await;
     let err = resp.as_ref().err();
     println!("{:?}", err);
