@@ -1,10 +1,12 @@
+/*!
+In this module there're implementations & tests of `SimpleHTTP`.
+*/
+
 use std::collections::{HashMap, VecDeque};
 use std::error::Error as StdError;
 use std::result::Result as StdResult;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use http::method::Method;
 // use futures::TryStreamExt;
@@ -12,9 +14,11 @@ use http::method::Method;
 use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
-#[cfg(feature = "multipart")]
-use mime::MULTIPART_FORM_DATA;
 
+#[cfg(feature = "multipart")]
+pub use super::common::{
+    data_and_boundary_from_multipart, generate_id, get_content_type_from_multipart_boundary,
+};
 use bytes::Bytes;
 #[cfg(feature = "multipart")]
 use formdata::FormData;
@@ -25,11 +29,37 @@ use multer::Multipart;
 
 pub const DEFAULT_TIMEOUT_MILLISECOND: u64 = 30 * 1000;
 
+/**
+`Interceptor` defines an interface for intercepting through Requests.
+
+# Arguments
+
+* `B` - The generic type of request body data
+
+# Remarks
+
+It's the interface trait of Interceptor.
+You could implement your own versions of interceptors
+
+*/
 pub trait Interceptor<B> {
     fn get_id(&self) -> String;
     fn intercept(&self, request: &mut Request<B>) -> StdResult<(), Box<dyn StdError>>;
 }
 
+/**
+`InterceptorFunc` Implements an interceptor with a FnMut for intercepting through Requests.
+
+# Arguments
+
+* `B` - The generic type of request body data (default: `hyper::Body`)
+
+# Remarks
+
+It's a dummy implementations of Interceptor.
+In most of Debugging/Observing cases it's useful enough.
+
+*/
 #[derive(Clone)]
 pub struct InterceptorFunc<B = Body> {
     id: String,
@@ -42,8 +72,11 @@ pub struct InterceptorFunc<B = Body> {
 impl<B> InterceptorFunc<B> {
     /**
     Generate a new `InterceptorFunc` with the given `FnMut`.
+
     # Arguments
+
     * `func` - The given `FnMut`.
+
     */
     pub fn new<T>(func: T) -> InterceptorFunc<B>
     where
@@ -56,11 +89,7 @@ impl<B> InterceptorFunc<B> {
     }
 
     fn generate_id() -> String {
-        let since_the_epoch = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-
-        format!("{:?}{:?}", thread::current().id(), since_the_epoch)
+        generate_id()
     }
 }
 impl<B> Interceptor<B> for InterceptorFunc<B> {
@@ -75,7 +104,8 @@ impl<B> Interceptor<B> for InterceptorFunc<B> {
 
 pub type SimpleHTTPResponse<B> = StdResult<Result<Response<B>>, Box<dyn StdError>>;
 
-// SimpleHTTP SimpleHTTP inspired by Retrofits
+/* SimpleHTTP SimpleHTTP inspired by Retrofits
+*/
 pub struct SimpleHTTP<C, B = Body> {
     pub client: Client<C, B>,
     pub interceptors: VecDeque<Arc<dyn Interceptor<B>>>,
@@ -180,16 +210,8 @@ impl std::fmt::Display for FormDataParseError {
 }
 
 #[cfg(feature = "multipart")]
-pub fn get_content_type_from_multipart_boundary(
-    boundary: Vec<u8>,
-) -> StdResult<String, Box<dyn StdError>> {
-    Ok(MULTIPART_FORM_DATA.to_string() + "; boundary=\"" + &String::from_utf8(boundary)? + "\"")
-}
-#[cfg(feature = "multipart")]
 pub fn body_from_multipart(form_data: &FormData) -> StdResult<(Body, Vec<u8>), Box<dyn StdError>> {
-    let mut data = Vec::<u8>::new();
-    let boundary = formdata::generate_boundary();
-    formdata::write_formdata(&mut data, &boundary, form_data)?;
+    let (data, boundary) = data_and_boundary_from_multipart(form_data)?;
 
     Ok((Body::from(data), boundary))
 }

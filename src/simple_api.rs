@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+/*!
+In this module there're implementations & tests of `SimpleAPI`.
+*/
+
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::future::Future;
@@ -7,56 +10,30 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-#[cfg(feature = "multipart")]
-use formdata::FormData;
 use http::method::Method;
 use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, Client, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::{Body, HeaderMap, Request, Uri};
-#[cfg(feature = "for_serde")]
-use serde::{de::DeserializeOwned, Serialize};
-#[cfg(feature = "for_serde")]
-use serde_json;
 use url::Url;
 
-use super::simple_http;
+pub use super::common::{
+    BodyDeserializer, BodySerializer, PathParam, QueryParam, DEFAULT_DUMMY_BYPASS_DESERIALIZER,
+    DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES,
+};
 use super::simple_http::{Interceptor, InterceptorFunc, SimpleHTTP};
-// use simple_http;
 
-/*
-`PathParam` Path params for API usages
-*/
-pub type PathParam = HashMap<String, String>;
-/*
-`QueryParam` Query params for API usages
-*/
-pub type QueryParam = HashMap<String, String>;
+#[cfg(feature = "for_serde")]
+pub use super::common::DEFAULT_SERDE_JSON_DESERIALIZER;
+#[cfg(feature = "for_serde")]
+use super::common::DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES;
+#[cfg(feature = "for_serde")]
+use serde::Serialize;
 
-#[macro_export]
-macro_rules! path_param {
-    ($( $key: expr => $val: expr ),*) => {{
-         hyper_api_service::hash_map_string!(
-             $( $key => $val )*
-         )
-    }}
-}
-#[macro_export]
-macro_rules! query_param {
-    ($( $key: expr => $val: expr ),*) => {{
-         hyper_api_service::hash_map_string!(
-             $( $key => $val )*
-         )
-    }}
-}
-#[macro_export]
-macro_rules! hash_map_string {
-    ($( $key: expr => $val: expr ),*) => {{
-         let mut map = hyper_api_service::simple_api::PathParam::new();
-         $( map.insert($key.into(), $val.into()); )*
-         map
-    }}
-}
+#[cfg(feature = "multipart")]
+use super::common::DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES;
+#[cfg(feature = "multipart")]
+use formdata::FormData;
 
 /*
 `CommonAPI` implements `make_api_response_only()`/`make_api_no_body()`/`make_api_has_body()`,
@@ -521,14 +498,6 @@ where
     }
 }
 
-// BodySerializer Serialize the body (for put/post/patch etc)
-pub trait BodySerializer<T, B = Body> {
-    fn encode(&self, origin: &T) -> StdResult<B, Box<dyn StdError>>;
-}
-// BodyDeserializer Deserialize the body (for response)
-pub trait BodyDeserializer<R> {
-    fn decode(&self, bytes: &Bytes) -> StdResult<Box<R>, Box<dyn StdError>>;
-}
 trait Outputting: Sized {
     fn outputting<O>(self) -> Self
     where
@@ -544,22 +513,12 @@ impl<T: Future> Outputting for T {}
 #[derive(Debug, Clone, Copy)]
 // DummyBypassSerializer Dummy bypass the body data, do nothing (for put/post/patch etc)
 pub struct DummyBypassSerializer {}
-impl BodySerializer<Bytes> for DummyBypassSerializer {
+impl BodySerializer<Bytes, Body> for DummyBypassSerializer {
     fn encode(&self, origin: &Bytes) -> StdResult<Body, Box<dyn StdError>> {
         Ok(Body::from(origin.to_vec()))
     }
 }
 pub static DEFAULT_DUMMY_BYPASS_SERIALIZER: DummyBypassSerializer = DummyBypassSerializer {};
-
-#[derive(Debug, Clone, Copy)]
-// DummyBypassDeserializer Dummy bypass the body, do nothing (for response)
-pub struct DummyBypassDeserializer {}
-impl BodyDeserializer<Bytes> for DummyBypassDeserializer {
-    fn decode(&self, bytes: &Bytes) -> StdResult<Box<Bytes>, Box<dyn StdError>> {
-        Ok(Box::new(bytes.clone()))
-    }
-}
-pub static DEFAULT_DUMMY_BYPASS_DESERIALIZER: DummyBypassDeserializer = DummyBypassDeserializer {};
 
 #[cfg(feature = "multipart")]
 #[derive(Debug, Clone, Copy)]
@@ -568,10 +527,9 @@ pub struct MultipartSerializer {}
 #[cfg(feature = "multipart")]
 impl BodySerializer<FormData, (String, Body)> for MultipartSerializer {
     fn encode(&self, origin: &FormData) -> StdResult<(String, Body), Box<dyn StdError>> {
-        let (body, boundary) = simple_http::body_from_multipart(origin)?;
-        let content_type = simple_http::get_content_type_from_multipart_boundary(boundary)?;
+        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES.encode(origin)?;
 
-        Ok((content_type, body))
+        Ok((content_type, Body::from(body)))
     }
 }
 #[cfg(feature = "multipart")]
@@ -584,28 +542,13 @@ pub struct SerdeJsonSerializer {}
 #[cfg(feature = "for_serde")]
 impl<T: Serialize> BodySerializer<T, Body> for SerdeJsonSerializer {
     fn encode(&self, origin: &T) -> StdResult<Body, Box<dyn StdError>> {
-        let serialized = serde_json::to_vec(origin)?;
+        let serialized = DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES.encode(origin)?;
 
         Ok(Body::from(serialized))
     }
 }
 #[cfg(feature = "for_serde")]
 pub static DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSerializer {};
-
-#[cfg(feature = "for_serde")]
-#[derive(Debug, Clone, Copy)]
-// SerdeJsonDeserializer Deserialize the body (for response)
-pub struct SerdeJsonDeserializer {}
-#[cfg(feature = "for_serde")]
-impl<R: DeserializeOwned + 'static> BodyDeserializer<R> for SerdeJsonDeserializer {
-    fn decode(&self, bytes: &Bytes) -> StdResult<Box<R>, Box<dyn StdError>> {
-        let target: R = serde_json::from_slice(bytes.to_vec().as_slice())?;
-
-        Ok(Box::new(target))
-    }
-}
-#[cfg(feature = "for_serde")]
-pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
 
 // SimpleAPI SimpleAPI inspired by Retrofits
 pub struct SimpleAPI<C, B = Body> {
