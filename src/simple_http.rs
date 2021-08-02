@@ -5,7 +5,7 @@ In this module there're implementations & tests of `SimpleHTTP`.
 use std::collections::{HashMap, VecDeque};
 use std::error::Error as StdError;
 use std::result::Result as StdResult;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use http::method::Method;
@@ -15,11 +15,13 @@ use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
 
+pub use super::common::{Interceptor, InterceptorFunc};
+use bytes::Bytes;
+
 #[cfg(feature = "multipart")]
 pub use super::common::{
     data_and_boundary_from_multipart, generate_id, get_content_type_from_multipart_boundary,
 };
-use bytes::Bytes;
 #[cfg(feature = "multipart")]
 use formdata::FormData;
 #[cfg(feature = "multipart")]
@@ -29,93 +31,20 @@ use multer::Multipart;
 
 pub const DEFAULT_TIMEOUT_MILLISECOND: u64 = 30 * 1000;
 
-/**
-`Interceptor` defines an interface for intercepting through Requests.
-
-# Arguments
-
-* `B` - The generic type of request body data
-
-# Remarks
-
-It's the interface trait of Interceptor.
-You could implement your own versions of interceptors
-
-*/
-pub trait Interceptor<B> {
-    fn get_id(&self) -> String;
-    fn intercept(&self, request: &mut Request<B>) -> StdResult<(), Box<dyn StdError>>;
-}
-
-/**
-`InterceptorFunc` Implements an interceptor with a FnMut for intercepting through Requests.
-
-# Arguments
-
-* `B` - The generic type of request body data (default: `hyper::Body`)
-
-# Remarks
-
-It's a dummy implementations of Interceptor.
-In most of Debugging/Observing cases it's useful enough.
-
-*/
-#[derive(Clone)]
-pub struct InterceptorFunc<B = Body> {
-    id: String,
-    func: Arc<
-        Mutex<
-            dyn FnMut(&mut Request<B>) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
-        >,
-    >,
-}
-impl<B> InterceptorFunc<B> {
-    /**
-    Generate a new `InterceptorFunc` with the given `FnMut`.
-
-    # Arguments
-
-    * `func` - The given `FnMut`.
-
-    */
-    pub fn new<T>(func: T) -> InterceptorFunc<B>
-    where
-        T: FnMut(&mut Request<B>) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
-    {
-        InterceptorFunc {
-            id: Self::generate_id(),
-            func: Arc::new(Mutex::new(func)),
-        }
-    }
-
-    fn generate_id() -> String {
-        generate_id()
-    }
-}
-impl<B> Interceptor<B> for InterceptorFunc<B> {
-    fn get_id(&self) -> String {
-        return self.id.clone();
-    }
-    fn intercept(&self, request: &mut Request<B>) -> StdResult<(), Box<dyn StdError>> {
-        let func = &mut *self.func.lock().unwrap();
-        (func)(request)
-    }
-}
-
 pub type SimpleHTTPResponse<B> = StdResult<Result<Response<B>>, Box<dyn StdError>>;
 
 /* SimpleHTTP SimpleHTTP inspired by Retrofits
 */
-pub struct SimpleHTTP<C, B = Body> {
+pub struct SimpleHTTP<C, B> {
     pub client: Client<C, B>,
-    pub interceptors: VecDeque<Arc<dyn Interceptor<B>>>,
+    pub interceptors: VecDeque<Arc<dyn Interceptor<Request<B>>>>,
     pub timeout_millisecond: u64,
 }
 
 impl<C, B> SimpleHTTP<C, B> {
     pub fn new_with_options(
         client: Client<C, B>,
-        interceptors: VecDeque<Arc<dyn Interceptor<B>>>,
+        interceptors: VecDeque<Arc<dyn Interceptor<Request<B>>>>,
         timeout_millisecond: u64,
     ) -> Self {
         SimpleHTTP {
@@ -125,13 +54,13 @@ impl<C, B> SimpleHTTP<C, B> {
         }
     }
 
-    pub fn add_interceptor(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+    pub fn add_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Request<B>>>) {
         self.interceptors.push_back(interceptor);
     }
-    pub fn add_interceptor_front(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+    pub fn add_interceptor_front(&mut self, interceptor: Arc<dyn Interceptor<Request<B>>>) {
         self.interceptors.push_front(interceptor);
     }
-    pub fn delete_interceptor(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+    pub fn delete_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Request<B>>>) {
         let id;
         {
             id = interceptor.get_id();
@@ -267,7 +196,7 @@ impl<C> SimpleHTTP<C, Body> {
     pub fn add_interceptor_fn(
         &mut self,
         func: impl FnMut(&mut Request<Body>) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
-    ) -> Arc<InterceptorFunc<Body>> {
+    ) -> Arc<InterceptorFunc<Request<Body>>> {
         let interceptor = Arc::new(InterceptorFunc::new(func));
         self.add_interceptor(interceptor.clone());
 

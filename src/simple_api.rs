@@ -44,7 +44,7 @@ for Retrofit-like usages.
 # Remarks
 It's inspired by `Retrofit`.
 */
-pub struct CommonAPI<C, B = Body> {
+pub struct CommonAPI<C, B> {
     pub simple_api: Arc<Mutex<SimpleAPI<C, B>>>,
 }
 
@@ -83,21 +83,21 @@ impl<C, B> CommonAPI<C, B> {
             .timeout_millisecond
     }
 
-    pub fn add_interceptor(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+    pub fn add_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Request<B>>>) {
         self.simple_api
             .lock()
             .unwrap()
             .simple_http
             .add_interceptor(interceptor);
     }
-    pub fn add_interceptor_front(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+    pub fn add_interceptor_front(&mut self, interceptor: Arc<dyn Interceptor<Request<B>>>) {
         self.simple_api
             .lock()
             .unwrap()
             .simple_http
             .add_interceptor_front(interceptor);
     }
-    pub fn delete_interceptor(&mut self, interceptor: Arc<dyn Interceptor<B>>) {
+    pub fn delete_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Request<B>>>) {
         self.simple_api
             .lock()
             .unwrap()
@@ -110,7 +110,7 @@ impl<C> CommonAPI<C, Body> {
     pub fn add_interceptor_fn(
         &mut self,
         func: impl FnMut(&mut Request<Body>) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
-    ) -> Arc<InterceptorFunc<Body>> {
+    ) -> Arc<InterceptorFunc<Request<Body>>> {
         self.simple_api
             .lock()
             .unwrap()
@@ -287,7 +287,7 @@ where
 
 // APIResponseOnly API with only response options
 // R: Response body Type
-pub struct APIResponseOnly<R, C, B = Body>(APINoBody<R, C, B>);
+pub struct APIResponseOnly<R, C, B>(APINoBody<R, C, B>);
 impl<R, C> APIResponseOnly<R, C, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
@@ -317,7 +317,7 @@ where
 
 // APINoBody API without request body options
 // R: Response body Type
-pub struct APINoBody<R, C, B = Body> {
+pub struct APINoBody<R, C, B> {
     base: CommonAPI<C, B>,
     pub method: Method,
     pub relative_url: String,
@@ -373,7 +373,7 @@ where
 // APIHasBody API with request body options
 // T: Request body Type
 // R: Response body Type
-pub struct APIHasBody<T, R, C, B = Body> {
+pub struct APIHasBody<T, R, C, B> {
     base: CommonAPI<C, B>,
     pub method: Method,
     pub relative_url: String,
@@ -437,7 +437,7 @@ where
 // APIMultipart API with request body options
 // T: Request body Type(multipart)
 // R: Response body Type
-pub struct APIMultipart<T, R, C, B = Body> {
+pub struct APIMultipart<T, R, C, B> {
     base: CommonAPI<C, B>,
     pub method: Method,
     pub relative_url: String,
@@ -551,7 +551,7 @@ impl<T: Serialize> BodySerializer<T, Body> for SerdeJsonSerializer {
 pub static DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSerializer {};
 
 // SimpleAPI SimpleAPI inspired by Retrofits
-pub struct SimpleAPI<C, B = Body> {
+pub struct SimpleAPI<C, B> {
     pub simple_http: SimpleHTTP<C, B>,
     pub base_url: Url,
     pub default_header: HeaderMap,

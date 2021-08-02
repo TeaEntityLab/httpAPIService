@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::result::Result as StdResult;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,6 +14,75 @@ use serde::{de::DeserializeOwned, Serialize};
 use formdata::FormData;
 #[cfg(feature = "multipart")]
 use mime::MULTIPART_FORM_DATA;
+
+/**
+`Interceptor` defines an interface for intercepting through Requests.
+
+# Arguments
+
+* `B` - The generic type of request body data
+
+# Remarks
+
+It's the interface trait of Interceptor.
+You could implement your own versions of interceptors
+
+*/
+pub trait Interceptor<R> {
+    fn get_id(&self) -> String;
+    fn intercept(&self, request: &mut R) -> StdResult<(), Box<dyn StdError>>;
+}
+
+/**
+`InterceptorFunc` Implements an interceptor with a FnMut for intercepting through Requests.
+
+# Arguments
+
+* `B` - The generic type of request body data (default: `hyper::Body`)
+
+# Remarks
+
+It's a dummy implementations of Interceptor.
+In most of Debugging/Observing cases it's useful enough.
+
+*/
+#[derive(Clone)]
+pub struct InterceptorFunc<R> {
+    id: String,
+    func: Arc<Mutex<dyn FnMut(&mut R) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static>>,
+}
+impl<R> InterceptorFunc<R> {
+    /**
+    Generate a new `InterceptorFunc` with the given `FnMut`.
+
+    # Arguments
+
+    * `func` - The given `FnMut`.
+
+    */
+    pub fn new<T>(func: T) -> InterceptorFunc<R>
+    where
+        T: FnMut(&mut R) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
+    {
+        InterceptorFunc {
+            id: Self::generate_id(),
+            func: Arc::new(Mutex::new(func)),
+        }
+    }
+
+    fn generate_id() -> String {
+        generate_id()
+    }
+}
+impl<R> Interceptor<R> for InterceptorFunc<R> {
+    fn get_id(&self) -> String {
+        return self.id.clone();
+    }
+    fn intercept(&self, request: &mut R) -> StdResult<(), Box<dyn StdError>> {
+        let func = &mut *self.func.lock().unwrap();
+        (func)(request)
+    }
+}
 
 /*
 `PathParam` Path params for API usages
