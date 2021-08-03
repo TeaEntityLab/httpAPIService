@@ -28,7 +28,7 @@ use super::simple_http::{
 `BodySerializer  Serialize the body (for put/post/patch etc)
 */
 pub trait BodySerializer<T, B> {
-    fn encode(&self, origin: &T) -> StdResult<B, Box<dyn StdError>>;
+    fn encode(&self, origin: T) -> StdResult<B, Box<dyn StdError>>;
 }
 /*
 `BodyDeserializer` Deserialize the body (for response)
@@ -41,45 +41,25 @@ pub trait BodyDeserializer<R> {
 // DummyBypassSerializerForBytes Dummy bypass the Bytes data, do nothing (for put/post/patch etc)
 pub struct DummyBypassSerializerForBytes {}
 impl BodySerializer<Bytes, Bytes> for DummyBypassSerializerForBytes {
-    fn encode(&self, origin: &Bytes) -> StdResult<Bytes, Box<dyn StdError>> {
-        Ok(Bytes::from(origin.to_vec()))
+    fn encode(&self, origin: Bytes) -> StdResult<Bytes, Box<dyn StdError>> {
+        Ok(Bytes::from(origin))
     }
 }
 pub static DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES: DummyBypassSerializerForBytes =
     DummyBypassSerializerForBytes {};
 
-#[cfg(feature = "multipart")]
 #[derive(Debug, Clone, Copy)]
-// MultipartSerializerForBytes Serialize the multipart body (for put/post/patch etc)
-pub struct MultipartSerializerForBytes {}
-#[cfg(feature = "multipart")]
-impl BodySerializer<FormData, (String, Bytes)> for MultipartSerializerForBytes {
-    fn encode(&self, origin: &FormData) -> StdResult<(String, Bytes), Box<dyn StdError>> {
-        let (body, boundary) = data_and_boundary_from_multipart(origin)?;
-        let content_type = get_content_type_from_multipart_boundary(boundary)?;
-
-        Ok((content_type, Bytes::from(body)))
+// DummyBypassSerializer Dummy bypass the body data, do nothing (for put/post/patch etc)
+pub struct DummyBypassSerializer {}
+impl<B> BodySerializer<Bytes, B> for DummyBypassSerializer
+where
+    B: From<Bytes>,
+{
+    fn encode(&self, origin: Bytes) -> StdResult<B, Box<dyn StdError>> {
+        Ok(B::from(origin))
     }
 }
-#[cfg(feature = "multipart")]
-pub static DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES: MultipartSerializerForBytes =
-    MultipartSerializerForBytes {};
-
-#[cfg(feature = "for_serde")]
-#[derive(Debug, Clone, Copy)]
-// SerdeJsonSerializerForBytes Serialize the for_serde body (for put/post/patch etc)
-pub struct SerdeJsonSerializerForBytes {}
-#[cfg(feature = "for_serde")]
-impl<T: Serialize> BodySerializer<T, Bytes> for SerdeJsonSerializerForBytes {
-    fn encode(&self, origin: &T) -> StdResult<Bytes, Box<dyn StdError>> {
-        let serialized = serde_json::to_vec(origin)?;
-
-        Ok(Bytes::from(serialized))
-    }
-}
-#[cfg(feature = "for_serde")]
-pub static DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES: SerdeJsonSerializerForBytes =
-    SerdeJsonSerializerForBytes {};
+pub static DEFAULT_DUMMY_BYPASS_SERIALIZER: DummyBypassSerializer = DummyBypassSerializer {};
 
 #[derive(Debug, Clone, Copy)]
 /*
@@ -92,6 +72,76 @@ impl BodyDeserializer<Bytes> for DummyBypassDeserializer {
     }
 }
 pub static DEFAULT_DUMMY_BYPASS_DESERIALIZER: DummyBypassDeserializer = DummyBypassDeserializer {};
+
+#[cfg(feature = "multipart")]
+#[derive(Debug, Clone, Copy)]
+// MultipartSerializerForBytes Serialize the multipart body (for put/post/patch etc)
+pub struct MultipartSerializerForBytes {}
+#[cfg(feature = "multipart")]
+impl BodySerializer<FormData, (String, Bytes)> for MultipartSerializerForBytes {
+    fn encode(&self, origin: FormData) -> StdResult<(String, Bytes), Box<dyn StdError>> {
+        let (body, boundary) = data_and_boundary_from_multipart(&origin)?;
+        let content_type = get_content_type_from_multipart_boundary(boundary)?;
+
+        Ok((content_type, Bytes::from(body)))
+    }
+}
+#[cfg(feature = "multipart")]
+pub static DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES: MultipartSerializerForBytes =
+    MultipartSerializerForBytes {};
+
+#[cfg(feature = "multipart")]
+#[derive(Debug, Clone, Copy)]
+// MultipartSerializer Serialize the multipart body (for put/post/patch etc)
+pub struct MultipartSerializer {}
+#[cfg(feature = "multipart")]
+impl<B> BodySerializer<FormData, (String, B)> for MultipartSerializer
+where
+    B: From<Bytes>,
+{
+    fn encode(&self, origin: FormData) -> StdResult<(String, B), Box<dyn StdError>> {
+        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES.encode(origin)?;
+
+        Ok((content_type, B::from(body)))
+    }
+}
+#[cfg(feature = "multipart")]
+pub static DEFAULT_MULTIPART_SERIALIZER: MultipartSerializer = MultipartSerializer {};
+
+#[cfg(feature = "for_serde")]
+#[derive(Debug, Clone, Copy)]
+// SerdeJsonSerializer Serialize the for_serde body (for put/post/patch etc)
+pub struct SerdeJsonSerializer {}
+
+#[cfg(feature = "for_serde")]
+#[derive(Debug, Clone, Copy)]
+// SerdeJsonSerializerForBytes Serialize the for_serde body (for put/post/patch etc)
+pub struct SerdeJsonSerializerForBytes {}
+#[cfg(feature = "for_serde")]
+impl<T: Serialize> BodySerializer<T, Bytes> for SerdeJsonSerializerForBytes {
+    fn encode(&self, origin: T) -> StdResult<Bytes, Box<dyn StdError>> {
+        let serialized = serde_json::to_vec(&origin)?;
+
+        Ok(Bytes::from(serialized))
+    }
+}
+#[cfg(feature = "for_serde")]
+pub static DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES: SerdeJsonSerializerForBytes =
+    SerdeJsonSerializerForBytes {};
+
+#[cfg(feature = "for_serde")]
+impl<T: Serialize, B> BodySerializer<T, B> for SerdeJsonSerializer
+where
+    B: From<Bytes>,
+{
+    fn encode(&self, origin: T) -> StdResult<B, Box<dyn StdError>> {
+        let serialized = DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES.encode(origin)?;
+
+        Ok(B::from(serialized))
+    }
+}
+#[cfg(feature = "for_serde")]
+pub static DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSerializer {};
 
 #[cfg(feature = "for_serde")]
 #[derive(Debug, Clone, Copy)]
@@ -267,6 +317,28 @@ impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
             response_deserializer,
         }
     }
+
+    #[cfg(feature = "multipart")]
+    pub fn make_api_multipart<R>(
+        &self,
+        base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
+        method: Method,
+        relative_url: impl Into<String>,
+        // request_serializer: Arc<dyn BodySerializer<FormData, (String, B)>>,
+        response_deserializer: Arc<dyn BodyDeserializer<R>>,
+        _return_type: &R,
+    ) -> APIMultipart<FormData, R, Client, Req, Res, Header, B>
+    where
+        B: From<Bytes>,
+    {
+        APIMultipart {
+            base,
+            method,
+            relative_url: relative_url.into(),
+            request_serializer: Arc::new(DEFAULT_MULTIPART_SERIALIZER),
+            response_deserializer,
+        }
+    }
 }
 
 // APIResponseOnly API with only response options
@@ -274,13 +346,7 @@ impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
 pub struct APIResponseOnly<R, Client, Req, Res, Header, B>(
     APINoBody<R, Client, Req, Res, Header, B>,
 );
-impl<R, Client, Req, Res, Header, B> APIResponseOnly<R, Client, Req, Res, Header, B>
-where
-// C: Connect + Clone + Send + Sync + 'static,
-// B: HttpBody + Send + 'static,
-// B::Data: Send,
-// B::Error: Into<Box<dyn StdError + Send + Sync>>,
-{
+impl<R, Client, Req, Res, Header, B> APIResponseOnly<R, Client, Req, Res, Header, B> {
     pub async fn call(&self) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
@@ -311,13 +377,7 @@ pub struct APINoBody<R, Client, Req, Res, Header, B> {
 
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<R, Client, Req, Res, Header, B> APINoBody<R, Client, Req, Res, Header, B>
-where
-// C: Connect + Clone + Send + Sync + 'static,
-// B: HttpBody + Send + 'static,
-// B::Data: Send,
-// B::Error: Into<Box<dyn StdError + Send + Sync>>,
-{
+impl<R, Client, Req, Res, Header, B> APINoBody<R, Client, Req, Res, Header, B> {
     pub async fn call(&self, path_param: Option<PathParam>) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
@@ -381,13 +441,7 @@ pub struct APIHasBody<T, R, Client, Req, Res, Header, B> {
     pub request_serializer: Arc<dyn BodySerializer<T, B>>,
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<T, R, Client, Req, Res, Header, B> APIHasBody<T, R, Client, Req, Res, Header, B>
-where
-// C: Connect + Clone + Send + Sync + 'static,
-// B: HttpBody + Send + 'static,
-// B::Data: Send,
-// B::Error: Into<Box<dyn StdError + Send + Sync>>,
-{
+impl<T, R, Client, Req, Res, Header, B> APIHasBody<T, R, Client, Req, Res, Header, B> {
     pub async fn call(
         &self,
         path_param: Option<impl Into<PathParam>>,
@@ -428,7 +482,7 @@ where
                 } else {
                     None
                 },
-                self.request_serializer.encode(&sent_body)?,
+                self.request_serializer.encode(sent_body)?,
             )
             .await?;
 
@@ -457,13 +511,7 @@ pub struct APIMultipart<T, R, Client, Req, Res, Header, B> {
     pub request_serializer: Arc<dyn BodySerializer<T, (String, B)>>,
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<T, R, Client, Req, Res, Header, B> APIMultipart<T, R, Client, Req, Res, Header, B>
-where
-// C: Connect + Clone + Send + Sync + 'static,
-// B: HttpBody + Send + 'static,
-// B::Data: Send,
-// B::Error: Into<Box<dyn StdError + Send + Sync>>,
-{
+impl<T, R, Client, Req, Res, Header, B> APIMultipart<T, R, Client, Req, Res, Header, B> {
     pub async fn call(
         &self,
         path_param: Option<impl Into<PathParam>>,
@@ -487,7 +535,7 @@ where
         B: Default,
     {
         // let mut sent_body = Box::new(sent_body);
-        let (content_type_with_boundary, sent_body) = self.request_serializer.encode(&sent_body)?;
+        let (content_type_with_boundary, sent_body) = self.request_serializer.encode(sent_body)?;
         let body = self
             .base
             ._call_common(

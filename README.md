@@ -89,6 +89,9 @@ use hyper::HeaderMap;
 use hyper_api_service::bind_hyper;
 use hyper_api_service::path_param;
 use hyper_api_service::simple_api;
+use hyper_api_service::simple_api::{
+    DEFAULT_SERDE_JSON_DESERIALIZER, DEFAULT_SERDE_JSON_SERIALIZER,
+};
 
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
@@ -105,8 +108,8 @@ impl Default for Product {
     }
 }
 
-let json_serializer = Arc::new(bind_hyper::DEFAULT_SERDE_JSON_SERIALIZER);
-let json_deserializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_DESERIALIZER);
+let json_serializer = Arc::new(DEFAULT_SERDE_JSON_SERIALIZER);
+let json_deserializer = Arc::new(DEFAULT_SERDE_JSON_DESERIALIZER);
 let return_type_marker = &Product::default();
 
 let common_api = bind_hyper::CommonAPI::new_for_hyper();

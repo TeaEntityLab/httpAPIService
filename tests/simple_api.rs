@@ -16,6 +16,9 @@ async fn test_simple_api_for_readme_md() {
     use hyper_api_service::bind_hyper;
     use hyper_api_service::path_param;
     use hyper_api_service::simple_api;
+    use hyper_api_service::simple_api::{
+        DEFAULT_SERDE_JSON_DESERIALIZER, DEFAULT_SERDE_JSON_SERIALIZER,
+    };
 
     use serde::{Deserialize, Serialize};
     #[derive(Serialize, Deserialize, Debug)]
@@ -32,8 +35,8 @@ async fn test_simple_api_for_readme_md() {
         }
     }
 
-    let json_serializer = Arc::new(bind_hyper::DEFAULT_SERDE_JSON_SERIALIZER);
-    let json_deserializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_DESERIALIZER);
+    let json_serializer = Arc::new(DEFAULT_SERDE_JSON_SERIALIZER);
+    let json_deserializer = Arc::new(DEFAULT_SERDE_JSON_DESERIALIZER);
     let return_type_marker = &Product::default();
 
     let common_api = bind_hyper::CommonAPI::new_for_hyper();
@@ -127,8 +130,7 @@ async fn test_simple_api_for_readme_md() {
         .await;
     let model = resp.ok().unwrap();
 }
-*/
-
+// */
 #[cfg(feature = "default")]
 #[tokio::test]
 async fn test_simple_api_common() {
@@ -145,11 +147,11 @@ async fn test_simple_api_common() {
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::bind_hyper;
-    use hyper_api_service::bind_hyper::{
-        add_header_authentication_bearer, DEFAULT_SERDE_JSON_SERIALIZER,
-    };
+    use hyper_api_service::bind_hyper::add_header_authentication_bearer;
     use hyper_api_service::simple_api;
-    use hyper_api_service::simple_api::DEFAULT_SERDE_JSON_DESERIALIZER;
+    use hyper_api_service::simple_api::{
+        DEFAULT_SERDE_JSON_DESERIALIZER, DEFAULT_SERDE_JSON_SERIALIZER,
+    };
     use hyper_api_service::{path_param, query_param};
 
     #[derive(Serialize, Deserialize, Debug)]

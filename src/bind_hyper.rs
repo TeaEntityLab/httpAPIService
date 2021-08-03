@@ -19,13 +19,10 @@ use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::{Body, Client, Error, HeaderMap, Request, Response, Result, Uri};
-use serde::Serialize;
 use url::Url;
 
 use super::common::{PathParam, QueryParam};
-use super::simple_api::{
-    APIMultipart, BaseService, BodyDeserializer, BodySerializer, SimpleAPI, SimpleAPICommon,
-};
+use super::simple_api::{BaseService, BodySerializer, SimpleAPI, SimpleAPICommon};
 use super::simple_http::{
     ClientCommon, FormDataParseError, SimpleHTTP, SimpleHTTPResponse, DEFAULT_TIMEOUT_MILLISECOND,
 };
@@ -34,7 +31,7 @@ use super::simple_http::{
 pub use super::simple_api::DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES;
 
 #[cfg(feature = "multipart")]
-pub use super::simple_api::DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES;
+pub use super::simple_api::{DEFAULT_MULTIPART_SERIALIZER, DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES};
 #[cfg(feature = "multipart")]
 pub use super::simple_http::{
     data_and_boundary_from_multipart, get_content_type_from_multipart_boundary,
@@ -45,46 +42,6 @@ use formdata::FormData;
 use multer;
 #[cfg(feature = "multipart")]
 use multer::Multipart;
-
-#[derive(Debug, Clone, Copy)]
-// DummyBypassSerializer Dummy bypass the body data, do nothing (for put/post/patch etc)
-pub struct DummyBypassSerializer {}
-impl BodySerializer<Bytes, Body> for DummyBypassSerializer {
-    fn encode(&self, origin: &Bytes) -> StdResult<Body, Box<dyn StdError>> {
-        Ok(Body::from(origin.to_vec()))
-    }
-}
-pub static DEFAULT_DUMMY_BYPASS_SERIALIZER: DummyBypassSerializer = DummyBypassSerializer {};
-
-#[cfg(feature = "multipart")]
-#[derive(Debug, Clone, Copy)]
-// MultipartSerializer Serialize the multipart body (for put/post/patch etc)
-pub struct MultipartSerializer {}
-#[cfg(feature = "multipart")]
-impl BodySerializer<FormData, (String, Body)> for MultipartSerializer {
-    fn encode(&self, origin: &FormData) -> StdResult<(String, Body), Box<dyn StdError>> {
-        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES.encode(origin)?;
-
-        Ok((content_type, Body::from(body)))
-    }
-}
-#[cfg(feature = "multipart")]
-pub static DEFAULT_MULTIPART_SERIALIZER: MultipartSerializer = MultipartSerializer {};
-
-#[cfg(feature = "for_serde")]
-#[derive(Debug, Clone, Copy)]
-// SerdeJsonSerializer Serialize the for_serde body (for put/post/patch etc)
-pub struct SerdeJsonSerializer {}
-#[cfg(feature = "for_serde")]
-impl<T: Serialize> BodySerializer<T, Body> for SerdeJsonSerializer {
-    fn encode(&self, origin: &T) -> StdResult<Body, Box<dyn StdError>> {
-        let serialized = DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES.encode(origin)?;
-
-        Ok(Body::from(serialized))
-    }
-}
-#[cfg(feature = "for_serde")]
-pub static DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSerializer {};
 
 pub struct HyperClient<C, B>(Client<C, B>);
 impl<C, B> ClientCommon<Client<C, B>, Request<B>, Result<Response<Body>>, HeaderMap, B>
@@ -218,36 +175,6 @@ impl Default
     }
 }
 
-impl<C> dyn SimpleAPICommon<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
-where
-    C: Connect + Clone + Send + Sync + 'static,
-{
-    #[cfg(feature = "multipart")]
-    pub fn make_request_multipart(
-        &self,
-        method: Method,
-        relative_url: impl Into<String>,
-        // content_type: String,
-        path_param: Option<impl Into<PathParam>>,
-        query_param: Option<impl Into<QueryParam>>,
-        body: FormData,
-    ) -> StdResult<Request<Body>, Box<dyn StdError>> {
-        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER.encode(&body)?;
-        self.make_request(
-            method,
-            relative_url,
-            // if content_type.is_empty() {
-            content_type,
-            // } else {
-            //     content_type
-            // },
-            path_param,
-            query_param,
-            body,
-        )
-    }
-}
-
 #[derive(Debug)]
 pub struct HyperError(Error);
 impl StdError for HyperError {}
@@ -372,12 +299,7 @@ where
         )
         .await
     }
-}
 
-impl<C> dyn BaseService<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
-where
-    C: Connect + Clone + Send + Sync + 'static,
-{
     pub async fn do_request_multipart(
         &self,
         method: Method,
@@ -387,8 +309,11 @@ where
         path_param: Option<impl Into<PathParam>>,
         query_param: Option<impl Into<QueryParam>>,
         body: FormData,
-    ) -> StdResult<Box<Body>, Box<dyn StdError>> {
-        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER.encode(&body)?;
+    ) -> StdResult<Box<B>, Box<dyn StdError>>
+    where
+        B: From<Bytes>,
+    {
+        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER.encode(body)?;
         self._call_common(
             method,
             header,
@@ -407,43 +332,6 @@ where
             body,
         )
         .await
-    }
-}
-
-impl<C> dyn BaseService<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body> {
-    #[cfg(feature = "multipart")]
-    pub fn make_api_multipart<R>(
-        &self,
-        base: Arc<
-            dyn BaseService<
-                Client<C, Body>,
-                Request<Body>,
-                Result<Response<Body>>,
-                HeaderMap,
-                Body,
-            >,
-        >,
-        method: Method,
-        relative_url: impl Into<String>,
-        // request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
-        response_deserializer: Arc<dyn BodyDeserializer<R>>,
-        _return_type: &R,
-    ) -> APIMultipart<
-        FormData,
-        R,
-        Client<C, Body>,
-        Request<Body>,
-        Result<Response<Body>>,
-        HeaderMap,
-        Body,
-    > {
-        APIMultipart {
-            base,
-            method,
-            relative_url: relative_url.into(),
-            request_serializer: Arc::new(DEFAULT_MULTIPART_SERIALIZER),
-            response_deserializer,
-        }
     }
 }
 
@@ -583,6 +471,34 @@ where
         }
 
         Ok(req)
+    }
+
+    #[cfg(feature = "multipart")]
+    pub fn make_request_multipart(
+        &self,
+        method: Method,
+        relative_url: impl Into<String>,
+        // content_type: String,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
+        body: FormData,
+    ) -> StdResult<Request<B>, Box<dyn StdError>>
+    where
+        B: From<Bytes>,
+    {
+        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER.encode(body)?;
+        self.make_request(
+            method,
+            relative_url,
+            // if content_type.is_empty() {
+            content_type,
+            // } else {
+            //     content_type
+            // },
+            path_param,
+            query_param,
+            body,
+        )
     }
 }
 
