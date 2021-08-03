@@ -22,8 +22,8 @@ async fn test_simple_api_common() {
     use hyper_api_service::bind_hyper::{
         add_header_authentication_bearer, DEFAULT_SERDE_JSON_SERIALIZER,
     };
-    use hyper_api_service::common::DEFAULT_SERDE_JSON_DESERIALIZER;
     use hyper_api_service::simple_api;
+    use hyper_api_service::simple_api::DEFAULT_SERDE_JSON_DESERIALIZER;
     use hyper_api_service::{path_param, query_param};
 
     #[derive(Serialize, Deserialize, Debug)]

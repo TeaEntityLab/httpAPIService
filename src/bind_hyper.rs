@@ -22,10 +22,7 @@ use hyper::{Body, Client, Error, HeaderMap, Request, Response, Result, Uri};
 use serde::Serialize;
 use url::Url;
 
-use super::common::{
-    PathParam, QueryParam, DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES,
-    DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES,
-};
+use super::common::{PathParam, QueryParam};
 use super::simple_api::{
     APIMultipart, BaseService, BodyDeserializer, BodySerializer, SimpleAPI, SimpleAPICommon,
 };
@@ -33,9 +30,14 @@ use super::simple_http::{
     ClientCommon, FormDataParseError, SimpleHTTP, SimpleHTTPResponse, DEFAULT_TIMEOUT_MILLISECOND,
 };
 
+#[cfg(feature = "for_serde")]
+pub use super::simple_api::DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES;
+
 #[cfg(feature = "multipart")]
-pub use super::common::{
-    data_and_boundary_from_multipart, generate_id, get_content_type_from_multipart_boundary,
+pub use super::simple_api::DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES;
+#[cfg(feature = "multipart")]
+pub use super::simple_http::{
+    data_and_boundary_from_multipart, get_content_type_from_multipart_boundary,
 };
 #[cfg(feature = "multipart")]
 use formdata::FormData;

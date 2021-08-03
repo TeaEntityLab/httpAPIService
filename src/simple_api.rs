@@ -12,14 +12,101 @@ use bytes::Bytes;
 use http::method::Method;
 use url::Url;
 
-pub use super::common::{
-    BodyDeserializer, BodySerializer, PathParam, QueryParam, DEFAULT_DUMMY_BYPASS_DESERIALIZER,
-    DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES,
-};
-use super::simple_http::{ClientCommon, Interceptor, InterceptorFunc, SimpleHTTP};
+#[cfg(feature = "multipart")]
+use formdata::FormData;
 
 #[cfg(feature = "for_serde")]
-pub use super::common::DEFAULT_SERDE_JSON_DESERIALIZER;
+use serde::{de::DeserializeOwned, Serialize};
+
+pub use super::common::{PathParam, QueryParam};
+use super::simple_http::{
+    data_and_boundary_from_multipart, get_content_type_from_multipart_boundary, ClientCommon,
+    Interceptor, InterceptorFunc, SimpleHTTP,
+};
+
+/*
+`BodySerializer  Serialize the body (for put/post/patch etc)
+*/
+pub trait BodySerializer<T, B> {
+    fn encode(&self, origin: &T) -> StdResult<B, Box<dyn StdError>>;
+}
+/*
+`BodyDeserializer` Deserialize the body (for response)
+*/
+pub trait BodyDeserializer<R> {
+    fn decode(&self, bytes: &Bytes) -> StdResult<Box<R>, Box<dyn StdError>>;
+}
+
+#[derive(Debug, Clone, Copy)]
+// DummyBypassSerializerForBytes Dummy bypass the Bytes data, do nothing (for put/post/patch etc)
+pub struct DummyBypassSerializerForBytes {}
+impl BodySerializer<Bytes, Bytes> for DummyBypassSerializerForBytes {
+    fn encode(&self, origin: &Bytes) -> StdResult<Bytes, Box<dyn StdError>> {
+        Ok(Bytes::from(origin.to_vec()))
+    }
+}
+pub static DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES: DummyBypassSerializerForBytes =
+    DummyBypassSerializerForBytes {};
+
+#[cfg(feature = "multipart")]
+#[derive(Debug, Clone, Copy)]
+// MultipartSerializerForBytes Serialize the multipart body (for put/post/patch etc)
+pub struct MultipartSerializerForBytes {}
+#[cfg(feature = "multipart")]
+impl BodySerializer<FormData, (String, Bytes)> for MultipartSerializerForBytes {
+    fn encode(&self, origin: &FormData) -> StdResult<(String, Bytes), Box<dyn StdError>> {
+        let (body, boundary) = data_and_boundary_from_multipart(origin)?;
+        let content_type = get_content_type_from_multipart_boundary(boundary)?;
+
+        Ok((content_type, Bytes::from(body)))
+    }
+}
+#[cfg(feature = "multipart")]
+pub static DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES: MultipartSerializerForBytes =
+    MultipartSerializerForBytes {};
+
+#[cfg(feature = "for_serde")]
+#[derive(Debug, Clone, Copy)]
+// SerdeJsonSerializerForBytes Serialize the for_serde body (for put/post/patch etc)
+pub struct SerdeJsonSerializerForBytes {}
+#[cfg(feature = "for_serde")]
+impl<T: Serialize> BodySerializer<T, Bytes> for SerdeJsonSerializerForBytes {
+    fn encode(&self, origin: &T) -> StdResult<Bytes, Box<dyn StdError>> {
+        let serialized = serde_json::to_vec(origin)?;
+
+        Ok(Bytes::from(serialized))
+    }
+}
+#[cfg(feature = "for_serde")]
+pub static DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES: SerdeJsonSerializerForBytes =
+    SerdeJsonSerializerForBytes {};
+
+#[derive(Debug, Clone, Copy)]
+/*
+DummyBypassDeserializer Dummy bypass the body, do nothing (for response)
+*/
+pub struct DummyBypassDeserializer {}
+impl BodyDeserializer<Bytes> for DummyBypassDeserializer {
+    fn decode(&self, bytes: &Bytes) -> StdResult<Box<Bytes>, Box<dyn StdError>> {
+        Ok(Box::new(bytes.clone()))
+    }
+}
+pub static DEFAULT_DUMMY_BYPASS_DESERIALIZER: DummyBypassDeserializer = DummyBypassDeserializer {};
+
+#[cfg(feature = "for_serde")]
+#[derive(Debug, Clone, Copy)]
+// SerdeJsonDeserializer Deserialize the body (for response)
+pub struct SerdeJsonDeserializer {}
+#[cfg(feature = "for_serde")]
+impl<R: DeserializeOwned + 'static> BodyDeserializer<R> for SerdeJsonDeserializer {
+    fn decode(&self, bytes: &Bytes) -> StdResult<Box<R>, Box<dyn StdError>> {
+        let target: R = serde_json::from_slice(bytes.to_vec().as_slice())?;
+
+        Ok(Box::new(target))
+    }
+}
+#[cfg(feature = "for_serde")]
+pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
 
 pub trait SimpleAPICommon<Client, Req, Res, Header, B> {
     fn set_base_url(&mut self, url: Url);

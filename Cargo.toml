@@ -21,21 +21,22 @@ path = "src/lib.rs"
 
 [features]
 default = [
-  "multipart", "for_serde"
+  "for_hyper", "multipart", "for_serde"
 ]
 pure = []
 multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
+for_hyper = [ "hyper", "tokio" ]
 
 test_runtime = [
-"multipart", "for_serde", "fp_rust", "hyper/full",
+"for_hyper", "multipart", "for_serde", "fp_rust", "hyper/full",
 ]
 
 [dependencies]
 
 # Required
-hyper = { version = "^0.14.0", features = ["client", "http1", "http2", "stream", "tcp",] }
-tokio = { version = "^1.8.0", features = ["time", "macros",] }
+hyper = { version = "^0.14.0", optional = true, features = ["client", "http1", "http2", "stream", "tcp",] }
+tokio = { version = "^1.8.0", optional = true,features = ["time", "macros",] }
 bytes = "^1.0.0"
 http = "^0.2.4"
 futures="^0.3.0"
