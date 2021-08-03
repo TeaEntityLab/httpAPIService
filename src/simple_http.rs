@@ -23,21 +23,21 @@ pub const DEFAULT_TIMEOUT_MILLISECOND: u64 = 30 * 1000;
 
 pub type SimpleHTTPResponse<R> = StdResult<R, Box<dyn StdError>>;
 
-pub trait ClientCommon<Client, Req, Res, B> {
+pub trait ClientCommon<Client, Req, Res, Header, B> {
     fn request(&self, req: Req) -> Pin<Box<dyn Future<Output = Res>>>;
 }
 
 /* SimpleHTTP SimpleHTTP inspired by Retrofits
 */
-pub struct SimpleHTTP<Client, Req, Res, B> {
-    pub client: Arc<dyn ClientCommon<Client, Req, Res, B>>,
+pub struct SimpleHTTP<Client, Req, Res, Header, B> {
+    pub client: Arc<dyn ClientCommon<Client, Req, Res, Header, B>>,
     pub interceptors: VecDeque<Arc<dyn Interceptor<Req>>>,
     pub timeout_millisecond: u64,
 }
 
-impl<Client, Req, Res, B> SimpleHTTP<Client, Req, Res, B> {
+impl<Client, Req, Res, Header, B> SimpleHTTP<Client, Req, Res, Header, B> {
     pub fn new_with_options(
-        client: Arc<dyn ClientCommon<Client, Req, Res, B>>,
+        client: Arc<dyn ClientCommon<Client, Req, Res, Header, B>>,
         interceptors: VecDeque<Arc<dyn Interceptor<Req>>>,
         timeout_millisecond: u64,
     ) -> Self {
@@ -48,7 +48,7 @@ impl<Client, Req, Res, B> SimpleHTTP<Client, Req, Res, B> {
         }
     }
 
-    pub fn set_client(&mut self, client: Arc<dyn ClientCommon<Client, Req, Res, B>>) {
+    pub fn set_client(&mut self, client: Arc<dyn ClientCommon<Client, Req, Res, Header, B>>) {
         self.client = client;
     }
 
@@ -74,7 +74,7 @@ impl<Client, Req, Res, B> SimpleHTTP<Client, Req, Res, B> {
     }
 }
 
-impl<Client, Req, Res, B> SimpleHTTP<Client, Req, Res, B>
+impl<Client, Req, Res, Header, B> SimpleHTTP<Client, Req, Res, Header, B>
 where
     Req: 'static,
 {

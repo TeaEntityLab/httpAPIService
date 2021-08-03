@@ -25,7 +25,9 @@ use super::common::{
     PathParam, QueryParam, DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES,
     DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES,
 };
-use super::simple_api::{APIMultipart, BodyDeserializer, BodySerializer, CommonAPI, SimpleAPI};
+use super::simple_api::{
+    APIMultipart, BodyDeserializer, BodySerializer, CommonAPI, SimpleAPI, SimpleAPICommon,
+};
 use super::simple_http::{
     ClientCommon, FormDataParseError, SimpleHTTP, SimpleHTTPResponse, DEFAULT_TIMEOUT_MILLISECOND,
 };
@@ -82,7 +84,8 @@ impl<T: Serialize> BodySerializer<T, Body> for SerdeJsonSerializer {
 pub static DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSerializer {};
 
 pub struct HyperClient<C, B>(Client<C, B>);
-impl<C, B> ClientCommon<Client<C, B>, Request<B>, Result<Response<Body>>, B> for HyperClient<C, B>
+impl<C, B> ClientCommon<Client<C, B>, Request<B>, Result<Response<Body>>, HeaderMap, B>
+    for HyperClient<C, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
@@ -94,7 +97,31 @@ where
     }
 }
 
-impl SimpleHTTP<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body> {
+pub struct HyperSimpleAPI<Client, Req, Res, Header, B>(SimpleAPI<Client, Req, Res, Header, B>);
+impl<Client, Req, Res, B> SimpleAPICommon<Client, Req, Res, HeaderMap, B>
+    for HyperSimpleAPI<Client, Req, Res, HeaderMap, B>
+{
+    fn set_base_url(&mut self, url: Url) {
+        self.0.base_url = url;
+    }
+    fn get_base_url(&self) -> Url {
+        self.0.base_url.clone()
+    }
+    fn set_default_header(&mut self, header: HeaderMap) {
+        self.0.default_header = header;
+    }
+    fn get_default_header(&self) -> HeaderMap {
+        self.0.default_header.clone()
+    }
+
+    fn get_simple_http(&mut self) -> &mut SimpleHTTP<Client, Req, Res, HeaderMap, B> {
+        &mut self.0.simple_http
+    }
+}
+
+impl
+    SimpleHTTP<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+{
     /// Create a new SimpleHTTP with a Client with the default [config](Builder).
     ///
     /// # Note
@@ -103,8 +130,13 @@ impl SimpleHTTP<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body
     /// destinations will require [configuring a connector that implements
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[inline]
-    pub fn new_for_hyper(
-    ) -> SimpleHTTP<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body> {
+    pub fn new_for_hyper() -> SimpleHTTP<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    > {
         return SimpleHTTP::new_with_options(
             Arc::new(HyperClient::<HttpConnector, Body>(Client::new())),
             VecDeque::new(),
@@ -113,15 +145,28 @@ impl SimpleHTTP<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body
     }
 }
 impl Default
-    for SimpleHTTP<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body>
+    for SimpleHTTP<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    >
 {
-    fn default(
-    ) -> SimpleHTTP<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body> {
+    fn default() -> SimpleHTTP<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    > {
         SimpleHTTP::new_for_hyper()
     }
 }
 
-impl SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body> {
+impl
+    SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+{
     /// Create a new SimpleAPI with a Client with the default [config](Builder).
     ///
     /// # Note
@@ -130,8 +175,13 @@ impl SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>
     /// destinations will require [configuring a connector that implements
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[inline]
-    pub fn new_for_hyper(
-    ) -> SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body> {
+    pub fn new_for_hyper() -> SimpleAPI<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    > {
         return SimpleAPI::new_with_options(
             SimpleHTTP::new_for_hyper(),
             Url::parse("http://localhost").ok().unwrap(),
@@ -140,15 +190,32 @@ impl SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>
 }
 
 impl Default
-    for SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body>
+    for SimpleAPI<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    >
 {
-    fn default(
-    ) -> SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body> {
-        SimpleAPI::<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body>::new_for_hyper()
+    fn default() -> SimpleAPI<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    > {
+        SimpleAPI::<
+            Client<HttpConnector, Body>,
+            Request<Body>,
+            Result<Response<Body>>,
+            HeaderMap,
+            Body,
+        >::new_for_hyper()
     }
 }
 
-impl<C> SimpleAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, Body>
+impl<C> dyn SimpleAPICommon<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
 {
@@ -178,7 +245,9 @@ where
     }
 }
 
-impl CommonAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body> {
+impl
+    CommonAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+{
     /// Create a new CommonAPI with a Client with the default [config](Builder).
     ///
     /// # Note
@@ -187,13 +256,20 @@ impl CommonAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>
     /// destinations will require [configuring a connector that implements
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[inline]
-    pub fn new_for_hyper(
-    ) -> CommonAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Body> {
-        return CommonAPI::new_with_options(Arc::new(Mutex::new(SimpleAPI::new_for_hyper())));
+    pub fn new_for_hyper() -> CommonAPI<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    > {
+        return CommonAPI::new_with_options(Arc::new(Mutex::new(HyperSimpleAPI(
+            SimpleAPI::new_for_hyper(),
+        ))));
     }
 }
 
-impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, Body>
+impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
 {
@@ -221,7 +297,7 @@ where
     }
 }
 
-impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, Body> {
+impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body> {
     #[cfg(feature = "multipart")]
     pub fn make_api_multipart<R>(
         &self,
@@ -230,8 +306,15 @@ impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, Body> 
         // request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
-    ) -> APIMultipart<FormData, R, Client<C, Body>, Request<Body>, Result<Response<Body>>, Body>
-    {
+    ) -> APIMultipart<
+        FormData,
+        R,
+        Client<C, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    > {
         APIMultipart {
             base: CommonAPI {
                 simple_api: self.simple_api.clone(),
@@ -285,7 +368,7 @@ pub async fn body_to_multipart(
     Ok(Multipart::new(body, boundary))
 }
 
-impl<C, B> SimpleHTTP<Client<C, B>, Request<B>, Result<Response<B>>, B>
+impl<C, B> SimpleHTTP<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
