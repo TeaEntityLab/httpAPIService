@@ -1,5 +1,4 @@
 extern crate futures;
-extern crate hyper;
 
 extern crate hyper_api_service;
 
@@ -12,10 +11,10 @@ fn connect(addr: &SocketAddr) -> std::io::Result<TcpStream> {
 }
 */
 
-use hyper_api_service::bind_hyper::{body_from_multipart, body_to_multipart};
-
 #[tokio::test]
 async fn test_get_header() {
+    extern crate hyper;
+
     extern crate fp_rust;
     use std::net::SocketAddr;
 
@@ -137,6 +136,7 @@ async fn test_formdata() {
 
     use fp_rust::sync::CountDownLatch;
     use hyper_api_service::bind_hyper::get_content_type_from_multipart_boundary;
+    use hyper_api_service::bind_hyper::{body_from_multipart, body_to_multipart};
     use hyper_api_service::simple_http;
     use hyper_api_service::simple_http::SimpleHTTP;
 
