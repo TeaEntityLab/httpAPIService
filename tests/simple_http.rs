@@ -12,6 +12,8 @@ fn connect(addr: &SocketAddr) -> std::io::Result<TcpStream> {
 }
 */
 
+use hyper_api_service::bind_hyper::{body_from_multipart, body_to_multipart};
+
 #[tokio::test]
 async fn test_get_header() {
     extern crate fp_rust;
@@ -87,7 +89,7 @@ async fn test_get_header() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let simple_http = SimpleHTTP::new();
+    let simple_http = SimpleHTTP::new_for_hyper();
     let request = Request::builder()
         .method(Method::POST)
         .uri("http://".to_string() + &addr.to_string())
@@ -134,6 +136,7 @@ async fn test_formdata() {
     use hyper::{body, Body, Method, Request, Response, Server};
 
     use fp_rust::sync::CountDownLatch;
+    use hyper_api_service::bind_hyper::get_content_type_from_multipart_boundary;
     use hyper_api_service::simple_http;
     use hyper_api_service::simple_http::SimpleHTTP;
 
@@ -163,7 +166,7 @@ async fn test_formdata() {
 
                     let (parts, body) = req.into_parts();
 
-                    let multipart = simple_http::body_to_multipart(&parts.headers, body).await;
+                    let multipart = body_to_multipart(&parts.headers, body).await;
 
                     println!("Error: {:?}", multipart.as_ref().err());
 
@@ -217,7 +220,7 @@ async fn test_formdata() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let simple_http = SimpleHTTP::new();
+    let simple_http = SimpleHTTP::new_for_hyper();
     let form_data_origin = FormData {
         fields: vec![
             ("name".to_owned(), "Baxter".to_owned()),
@@ -225,9 +228,7 @@ async fn test_formdata() {
         ],
         files: vec![],
     };
-    let (body, boundary) = simple_http::body_from_multipart(&form_data_origin)
-        .ok()
-        .unwrap();
+    let (body, boundary) = body_from_multipart(&form_data_origin).ok().unwrap();
 
     println!(
         "boundary: {:?}",
@@ -240,7 +241,7 @@ async fn test_formdata() {
         .header(
             CONTENT_TYPE,
             // "multipart/form-data; boundary=".to_string()
-            simple_http::get_content_type_from_multipart_boundary(boundary)
+            get_content_type_from_multipart_boundary(boundary)
                 .ok()
                 .unwrap(),
         )

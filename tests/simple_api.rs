@@ -18,8 +18,11 @@ async fn test_simple_api_common() {
     use serde::{Deserialize, Serialize};
 
     use fp_rust::sync::CountDownLatch;
+    use hyper_api_service::bind_hyper::{
+        add_header_authentication_bearer, DEFAULT_SERDE_JSON_SERIALIZER,
+    };
+    use hyper_api_service::common::DEFAULT_SERDE_JSON_DESERIALIZER;
     use hyper_api_service::simple_api;
-    use hyper_api_service::simple_http;
     use hyper_api_service::{path_param, query_param};
 
     #[derive(Serialize, Deserialize, Debug)]
@@ -122,7 +125,7 @@ async fn test_simple_api_common() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let mut common_api = simple_api::CommonAPI::new();
+    let mut common_api = simple_api::CommonAPI::new_for_hyper();
     common_api.set_base_url(
         url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
             .ok()
@@ -132,7 +135,7 @@ async fn test_simple_api_common() {
     common_api.set_timeout_millisecond(10 * 1000);
 
     let mut header_map = common_api.get_default_header_clone();
-    header_map = simple_http::add_header_authentication_bearer(header_map, "MY_TOKEN")
+    header_map = add_header_authentication_bearer(header_map, "MY_TOKEN")
         .ok()
         .unwrap();
     common_api.set_default_header(header_map);
@@ -142,8 +145,8 @@ async fn test_simple_api_common() {
         Ok(())
     });
 
-    let json_serializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_SERIALIZER);
-    let json_deserializer = Arc::new(simple_api::DEFAULT_SERDE_JSON_DESERIALIZER);
+    let json_serializer = Arc::new(DEFAULT_SERDE_JSON_SERIALIZER);
+    let json_deserializer = Arc::new(DEFAULT_SERDE_JSON_DESERIALIZER);
     let return_type_marker = &Product::default();
 
     // GET make_api_response_only
@@ -251,6 +254,7 @@ async fn test_simple_api_formdata() {
     use hyper::{Body, Method, Request, Response, Server};
 
     use fp_rust::sync::CountDownLatch;
+    use hyper_api_service::bind_hyper::body_to_multipart;
     use hyper_api_service::simple_api;
     use hyper_api_service::simple_http;
 
@@ -280,7 +284,7 @@ async fn test_simple_api_formdata() {
 
                     let (parts, body) = req.into_parts();
 
-                    let multipart = simple_http::body_to_multipart(&parts.headers, body).await;
+                    let multipart = body_to_multipart(&parts.headers, body).await;
 
                     println!("Error: {:?}", multipart.as_ref().err());
 
@@ -342,7 +346,7 @@ async fn test_simple_api_formdata() {
         files: vec![],
     };
 
-    let common_api = simple_api::CommonAPI::new();
+    let common_api = simple_api::CommonAPI::new_for_hyper();
 
     common_api.set_base_url(
         url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
