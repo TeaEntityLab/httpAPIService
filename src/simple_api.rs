@@ -14,14 +14,14 @@ use http::method::Method;
 use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, Client, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
-use hyper::{Body, HeaderMap, Request, Uri};
+use hyper::{Body, HeaderMap, Request, Response, Result, Uri};
 use url::Url;
 
 pub use super::common::{
     BodyDeserializer, BodySerializer, PathParam, QueryParam, DEFAULT_DUMMY_BYPASS_DESERIALIZER,
     DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES,
 };
-use super::simple_http::{Interceptor, InterceptorFunc, SimpleHTTP};
+use super::simple_http::{ClientCommon, Interceptor, InterceptorFunc, SimpleHTTP};
 
 #[cfg(feature = "for_serde")]
 pub use super::common::DEFAULT_SERDE_JSON_DESERIALIZER;
@@ -44,12 +44,14 @@ for Retrofit-like usages.
 # Remarks
 It's inspired by `Retrofit`.
 */
-pub struct CommonAPI<C, B> {
-    pub simple_api: Arc<Mutex<SimpleAPI<C, B>>>,
+pub struct CommonAPI<Client, Req, Res, Method, B> {
+    pub simple_api: Arc<Mutex<SimpleAPI<Client, Req, Res, Method, B>>>,
 }
 
-impl<C, B> CommonAPI<C, B> {
-    pub fn new_with_options(simple_api: Arc<Mutex<SimpleAPI<C, B>>>) -> Self {
+impl<Client, Req, Res, Method, B> CommonAPI<Client, Req, Res, Method, B> {
+    pub fn new_with_options(
+        simple_api: Arc<Mutex<SimpleAPI<Client, Req, Res, Method, B>>>,
+    ) -> Self {
         CommonAPI { simple_api }
     }
 
@@ -65,8 +67,12 @@ impl<C, B> CommonAPI<C, B> {
     pub fn get_default_header_clone(&self) -> HeaderMap {
         self.simple_api.lock().unwrap().default_header.clone()
     }
-    pub fn set_client(&self, client: Client<C, B>) {
-        self.simple_api.lock().unwrap().simple_http.client = client;
+    pub fn set_client(&self, client: Arc<dyn ClientCommon<Client, Req, Res, Method, B>>) {
+        self.simple_api
+            .lock()
+            .unwrap()
+            .simple_http
+            .set_client(client);
     }
     pub fn set_timeout_millisecond(&self, timeout_millisecond: u64) {
         self.simple_api
@@ -83,21 +89,21 @@ impl<C, B> CommonAPI<C, B> {
             .timeout_millisecond
     }
 
-    pub fn add_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Request<B>>>) {
+    pub fn add_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Req>>) {
         self.simple_api
             .lock()
             .unwrap()
             .simple_http
             .add_interceptor(interceptor);
     }
-    pub fn add_interceptor_front(&mut self, interceptor: Arc<dyn Interceptor<Request<B>>>) {
+    pub fn add_interceptor_front(&mut self, interceptor: Arc<dyn Interceptor<Req>>) {
         self.simple_api
             .lock()
             .unwrap()
             .simple_http
             .add_interceptor_front(interceptor);
     }
-    pub fn delete_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Request<B>>>) {
+    pub fn delete_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Req>>) {
         self.simple_api
             .lock()
             .unwrap()
@@ -106,11 +112,14 @@ impl<C, B> CommonAPI<C, B> {
     }
 }
 
-impl<C> CommonAPI<C, Body> {
+impl<Client, Req, Res, Method, B> CommonAPI<Client, Req, Res, Method, B>
+where
+    Req: 'static,
+{
     pub fn add_interceptor_fn(
         &mut self,
-        func: impl FnMut(&mut Request<Body>) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
-    ) -> Arc<InterceptorFunc<Request<Body>>> {
+        func: impl FnMut(&mut Req) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
+    ) -> Arc<InterceptorFunc<Req>> {
         self.simple_api
             .lock()
             .unwrap()
@@ -119,7 +128,7 @@ impl<C> CommonAPI<C, Body> {
     }
 }
 
-impl CommonAPI<HttpConnector, Body> {
+impl CommonAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Method, Body> {
     /// Create a new CommonAPI with a Client with the default [config](Builder).
     ///
     /// # Note
@@ -128,19 +137,21 @@ impl CommonAPI<HttpConnector, Body> {
     /// destinations will require [configuring a connector that implements
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[inline]
-    pub fn new() -> CommonAPI<HttpConnector, Body> {
+    pub fn new(
+    ) -> CommonAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
+    {
         return CommonAPI::new_with_options(Arc::new(Mutex::new(SimpleAPI::new())));
     }
 }
 
-impl<C> CommonAPI<C, Body> {
+impl<Client, Req, Res, Method, B> CommonAPI<Client, Req, Res, Method, B> {
     pub fn make_api_response_only<R>(
         &self,
         method: Method,
         relative_url: impl Into<String>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
-    ) -> APIResponseOnly<R, C, Body> {
+    ) -> APIResponseOnly<R, Client, Req, Res, Method, B> {
         APIResponseOnly {
             0: self.make_api_no_body(method, relative_url, response_deserializer, _return_type),
         }
@@ -151,7 +162,7 @@ impl<C> CommonAPI<C, Body> {
         relative_url: impl Into<String>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
-    ) -> APINoBody<R, C, Body> {
+    ) -> APINoBody<R, Client, Req, Res, Method, B> {
         APINoBody {
             base: CommonAPI {
                 simple_api: self.simple_api.clone(),
@@ -167,10 +178,10 @@ impl<C> CommonAPI<C, Body> {
         method: Method,
         relative_url: impl Into<String>,
         content_type: impl Into<String>,
-        request_serializer: Arc<dyn BodySerializer<T, Body>>,
+        request_serializer: Arc<dyn BodySerializer<T, B>>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
-    ) -> APIHasBody<T, R, C, Body> {
+    ) -> APIHasBody<T, R, Client, Req, Res, Method, B> {
         APIHasBody {
             base: CommonAPI {
                 simple_api: self.simple_api.clone(),
@@ -182,6 +193,9 @@ impl<C> CommonAPI<C, Body> {
             response_deserializer,
         }
     }
+}
+
+impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, Method, Body> {
     #[cfg(feature = "multipart")]
     pub fn make_api_multipart<R>(
         &self,
@@ -190,7 +204,15 @@ impl<C> CommonAPI<C, Body> {
         // request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
-    ) -> APIMultipart<FormData, R, C, Body> {
+    ) -> APIMultipart<
+        FormData,
+        R,
+        Client<C, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        Method,
+        Body,
+    > {
         APIMultipart {
             base: CommonAPI {
                 simple_api: self.simple_api.clone(),
@@ -203,9 +225,12 @@ impl<C> CommonAPI<C, Body> {
     }
 }
 
-impl<C> CommonAPI<C, Body>
+impl<C, B> CommonAPI<Client<C, B>, Request<B>, Result<Response<B>>, Method, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
+    B: HttpBody + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     async fn _call_common(
         &self,
@@ -215,8 +240,8 @@ where
         content_type: impl Into<String>,
         path_param: Option<impl Into<PathParam>>,
         query_param: Option<impl Into<QueryParam>>,
-        body: Body,
-    ) -> StdResult<Box<Body>, Box<dyn StdError>> {
+        body: B,
+    ) -> StdResult<Box<B>, Box<dyn StdError>> {
         let simple_api = self.simple_api.lock().unwrap();
         let mut req = simple_api.make_request(
             method,
@@ -247,8 +272,8 @@ where
         content_type: impl Into<String>,
         path_param: Option<impl Into<PathParam>>,
         query_param: Option<impl Into<QueryParam>>,
-        body: Body,
-    ) -> StdResult<Box<Body>, Box<dyn StdError>> {
+        body: B,
+    ) -> StdResult<Box<B>, Box<dyn StdError>> {
         self._call_common(
             method,
             header,
@@ -260,7 +285,12 @@ where
         )
         .await
     }
+}
 
+impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+{
     pub async fn do_request_multipart(
         &self,
         method: Method,
@@ -287,8 +317,10 @@ where
 
 // APIResponseOnly API with only response options
 // R: Response body Type
-pub struct APIResponseOnly<R, C, B>(APINoBody<R, C, B>);
-impl<R, C> APIResponseOnly<R, C, Body>
+pub struct APIResponseOnly<R, Client, Req, Res, Method, B>(
+    APINoBody<R, Client, Req, Res, Method, B>,
+);
+impl<R, C> APIResponseOnly<R, Client<C, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
     // B: HttpBody + Send + 'static,
@@ -317,15 +349,15 @@ where
 
 // APINoBody API without request body options
 // R: Response body Type
-pub struct APINoBody<R, C, B> {
-    base: CommonAPI<C, B>,
+pub struct APINoBody<R, Client, Req, Res, Method, B> {
+    base: CommonAPI<Client, Req, Res, Method, B>,
     pub method: Method,
     pub relative_url: String,
     pub content_type: String,
 
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<R, C> APINoBody<R, C, Body>
+impl<R, C> APINoBody<R, Client<C, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
     // B: HttpBody + Send + 'static,
@@ -373,8 +405,8 @@ where
 // APIHasBody API with request body options
 // T: Request body Type
 // R: Response body Type
-pub struct APIHasBody<T, R, C, B> {
-    base: CommonAPI<C, B>,
+pub struct APIHasBody<T, R, Client, Req, Res, Method, B> {
+    base: CommonAPI<Client, Req, Res, Method, B>,
     pub method: Method,
     pub relative_url: String,
     pub content_type: String,
@@ -382,7 +414,7 @@ pub struct APIHasBody<T, R, C, B> {
     pub request_serializer: Arc<dyn BodySerializer<T, B>>,
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<T, R, C> APIHasBody<T, R, C, Body>
+impl<T, R, C> APIHasBody<T, R, Client<C, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
     // B: HttpBody + Send + 'static,
@@ -437,15 +469,16 @@ where
 // APIMultipart API with request body options
 // T: Request body Type(multipart)
 // R: Response body Type
-pub struct APIMultipart<T, R, C, B> {
-    base: CommonAPI<C, B>,
+pub struct APIMultipart<T, R, Client, Req, Res, Method, B> {
+    base: CommonAPI<Client, Req, Res, Method, B>,
     pub method: Method,
     pub relative_url: String,
     // pub content_type: String,
     pub request_serializer: Arc<dyn BodySerializer<T, (String, B)>>,
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<T, R, C> APIMultipart<T, R, C, Body>
+impl<T, R, C>
+    APIMultipart<T, R, Client<C, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
     // B: HttpBody + Send + 'static,
@@ -551,14 +584,17 @@ impl<T: Serialize> BodySerializer<T, Body> for SerdeJsonSerializer {
 pub static DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSerializer {};
 
 // SimpleAPI SimpleAPI inspired by Retrofits
-pub struct SimpleAPI<C, B> {
-    pub simple_http: SimpleHTTP<C, B>,
+pub struct SimpleAPI<Client, Req, Res, Method, B> {
+    pub simple_http: SimpleHTTP<Client, Req, Res, Method, B>,
     pub base_url: Url,
     pub default_header: HeaderMap,
 }
 
-impl<C, B> SimpleAPI<C, B> {
-    pub fn new_with_options(simple_http: SimpleHTTP<C, B>, base_url: Url) -> Self {
+impl<Client, Req, Res, Method, B> SimpleAPI<Client, Req, Res, Method, B> {
+    pub fn new_with_options(
+        simple_http: SimpleHTTP<Client, Req, Res, Method, B>,
+        base_url: Url,
+    ) -> Self {
         SimpleAPI {
             simple_http,
             base_url,
@@ -567,7 +603,7 @@ impl<C, B> SimpleAPI<C, B> {
     }
 }
 
-impl SimpleAPI<HttpConnector, Body> {
+impl SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Method, Body> {
     /// Create a new SimpleAPI with a Client with the default [config](Builder).
     ///
     /// # Note
@@ -576,20 +612,26 @@ impl SimpleAPI<HttpConnector, Body> {
     /// destinations will require [configuring a connector that implements
     /// TLS](https://hyper.rs/guides/client/configuration).
     #[inline]
-    pub fn new() -> SimpleAPI<HttpConnector, Body> {
+    pub fn new(
+    ) -> SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
+    {
         return SimpleAPI::new_with_options(
             SimpleHTTP::new(),
             Url::parse("http://localhost").ok().unwrap(),
         );
     }
 }
-impl Default for SimpleAPI<HttpConnector, Body> {
-    fn default() -> SimpleAPI<HttpConnector, Body> {
-        SimpleAPI::<HttpConnector, Body>::new()
+impl Default
+    for SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
+{
+    fn default(
+    ) -> SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
+    {
+        SimpleAPI::<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, Method, Body>::new()
     }
 }
 
-impl<C, B> SimpleAPI<C, B>
+impl<C, B> SimpleAPI<Client<C, B>, Request<B>, Result<Response<B>>, Method, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
@@ -638,7 +680,7 @@ where
         Ok(req)
     }
 }
-impl<C> SimpleAPI<C, Body>
+impl<C> SimpleAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, Method, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
 {
