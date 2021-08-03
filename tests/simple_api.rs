@@ -14,10 +14,11 @@ async fn test_simple_api_common() {
     use std::sync::Arc;
 
     use hyper::service::{make_service_fn, service_fn};
-    use hyper::{body, Body, Method, Request, Response, Server};
+    use hyper::{body, Body, HeaderMap, Method, Request, Response, Server};
     use serde::{Deserialize, Serialize};
 
     use fp_rust::sync::CountDownLatch;
+    use hyper_api_service::bind_hyper;
     use hyper_api_service::bind_hyper::{
         add_header_authentication_bearer, DEFAULT_SERDE_JSON_SERIALIZER,
     };
@@ -125,22 +126,28 @@ async fn test_simple_api_common() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let mut common_api = simple_api::CommonAPI::new_for_hyper();
-    common_api.set_base_url(
+    let common_api = bind_hyper::CommonAPI::new_for_hyper();
+    let mut base_service_setter = common_api.as_base_service_setter();
+    let base_service_shared = common_api.as_base_service_shared();
+    base_service_setter.set_base_url(
         url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
             .ok()
             .unwrap(),
     );
     // Setup timeout_millisecond
-    common_api.set_timeout_millisecond(10 * 1000);
+    base_service_setter.set_timeout_millisecond(10 * 1000);
 
-    let mut header_map = common_api.get_default_header_clone();
+    let mut header_map = if let Some(header) = base_service_setter.get_default_header() {
+        header
+    } else {
+        HeaderMap::new()
+    };
     header_map = add_header_authentication_bearer(header_map, "MY_TOKEN")
         .ok()
         .unwrap();
-    common_api.set_default_header(header_map);
+    base_service_setter.set_default_header(Some(header_map));
 
-    common_api.add_interceptor_fn(|req| {
+    base_service_setter.add_interceptor_fn(|req| {
         println!("REQ_CONTENT: {:?}", req);
         Ok(())
     });
@@ -151,7 +158,8 @@ async fn test_simple_api_common() {
 
     // GET make_api_response_only
     {
-        let api_get_products = common_api.make_api_response_only(
+        let api_get_products = base_service_setter.make_api_response_only(
+            base_service_shared.clone(),
             Method::GET,
             "/products",
             json_deserializer.clone(),
@@ -172,7 +180,8 @@ async fn test_simple_api_common() {
     }
     // DELETE make_api_no_body
     {
-        let api_delete_product = common_api.make_api_no_body(
+        let api_delete_product = base_service_setter.make_api_no_body(
+            base_service_shared.clone(),
             Method::DELETE,
             "/products/{id}",
             json_deserializer.clone(),
@@ -200,7 +209,8 @@ async fn test_simple_api_common() {
     }
     // PUT make_api_has_body
     {
-        let api_put_product = common_api.make_api_has_body(
+        let api_put_product = base_service_setter.make_api_has_body(
+            base_service_shared.clone(),
             Method::PUT,
             "/products/{id}",
             "application/json",
@@ -254,6 +264,7 @@ async fn test_simple_api_formdata() {
     use hyper::{Body, Method, Request, Response, Server};
 
     use fp_rust::sync::CountDownLatch;
+    use hyper_api_service::bind_hyper;
     use hyper_api_service::bind_hyper::body_to_multipart;
     use hyper_api_service::simple_api;
     use hyper_api_service::simple_http;
@@ -346,16 +357,19 @@ async fn test_simple_api_formdata() {
         files: vec![],
     };
 
-    let common_api = simple_api::CommonAPI::new_for_hyper();
+    let common_api = bind_hyper::CommonAPI::new_for_hyper();
+    let base_service_setter = common_api.as_base_service_setter();
+    let base_service_shared = common_api.as_base_service_shared();
 
-    common_api.set_base_url(
+    base_service_setter.set_base_url(
         url::Url::parse(&("http://".to_string() + addr.to_string().as_str()))
             .ok()
             .unwrap(),
     );
 
     // POST make_api_multipart
-    let api_post_multipart = common_api.make_api_multipart(
+    let api_post_multipart = base_service_setter.make_api_multipart(
+        base_service_shared.clone(),
         Method::POST,
         "/form",
         Arc::new(simple_api::DEFAULT_DUMMY_BYPASS_DESERIALIZER),

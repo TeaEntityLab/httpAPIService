@@ -4,15 +4,12 @@ In this module there're implementations & tests of `SimpleAPI`.
 
 use std::error::Error as StdError;
 use std::future::Future;
+use std::pin::Pin;
 use std::result::Result as StdResult;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
+use bytes::Bytes;
 use http::method::Method;
-use hyper::body::HttpBody;
-use hyper::client::{connect::Connect, Client};
-use hyper::header::{HeaderValue, CONTENT_TYPE};
-use hyper::{Body, HeaderMap, Request, Response, Result, Uri};
 use url::Url;
 
 pub use super::common::{
@@ -27,110 +24,63 @@ pub use super::common::DEFAULT_SERDE_JSON_DESERIALIZER;
 pub trait SimpleAPICommon<Client, Req, Res, Header, B> {
     fn set_base_url(&mut self, url: Url);
     fn get_base_url(&self) -> Url;
-    fn set_default_header(&mut self, header: Header);
-    fn get_default_header(&self) -> Header;
+    fn set_default_header(&mut self, header: Option<Header>);
+    fn get_default_header(&self) -> Option<Header>;
 
     fn get_simple_http(&mut self) -> &mut SimpleHTTP<Client, Req, Res, Header, B>;
 }
 
-impl<C, B> dyn SimpleAPICommon<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
-where
-    C: Connect + Clone + Send + Sync + 'static,
-    B: HttpBody + Send + 'static,
-    B::Data: Send,
-    B::Error: Into<Box<dyn StdError + Send + Sync>>,
-{
-    pub fn make_request(
+pub trait BaseService<Client, Req, Res, Header, B> {
+    fn get_simple_api(&self) -> &Arc<Mutex<dyn SimpleAPICommon<Client, Req, Res, Header, B>>>;
+    fn _call_common(
         &self,
         method: Method,
-        relative_url: impl Into<String>,
-        content_type: impl Into<String>,
-        path_param: Option<impl Into<PathParam>>,
-        query_param: Option<impl Into<QueryParam>>,
+        header: Option<Header>,
+        relative_url: String,
+        content_type: String,
+        path_param: Option<PathParam>,
+        query_param: Option<QueryParam>,
         body: B,
-    ) -> StdResult<Request<B>, Box<dyn StdError>> {
-        let mut relative_url = relative_url.into();
-        if let Some(path_param) = path_param {
-            for (k, v) in path_param.into().into_iter() {
-                relative_url = relative_url.replace(&("{".to_string() + &k + "}"), &v);
-            }
-        }
+    ) -> Pin<Box<dyn Future<Output = StdResult<Box<B>, Box<dyn StdError>>>>>;
 
-        let mut req = Request::new(body);
-        // Url
-        match self.get_base_url().join(&relative_url) {
-            Ok(mut url) => {
-                if let Some(query_param) = query_param {
-                    for (k, v) in query_param.into().into_iter() {
-                        url.set_query(Some(&(k + "=" + &v)));
-                    }
-                }
-                *req.uri_mut() = Uri::from_str(url.as_str())?;
-            }
-            Err(e) => return Err(Box::new(e)),
-        };
-        // Method
-        *req.method_mut() = method;
-        // Header
-        *req.headers_mut() = self.get_default_header().clone();
-        let content_type = content_type.into();
-        if !content_type.is_empty() {
-            req.headers_mut()
-                .insert(CONTENT_TYPE, HeaderValue::from_str(&content_type)?);
-        }
-
-        Ok(req)
-    }
+    fn body_to_bytes(
+        &self,
+        body: B,
+    ) -> Pin<Box<dyn Future<Output = StdResult<Bytes, Box<dyn StdError + Send + Sync>>>>>;
 }
 
-/*
-`CommonAPI` implements `make_api_response_only()`/`make_api_no_body()`/`make_api_has_body()`,
-for Retrofit-like usages.
-# Arguments
-* `C` - The generic type of Hyper client Connector
-* `B` - The generic type of Hyper client Body
-# Remarks
-It's inspired by `Retrofit`.
-*/
-pub struct CommonAPI<Client, Req, Res, Header, B> {
-    pub simple_api: Arc<Mutex<dyn SimpleAPICommon<Client, Req, Res, Header, B>>>,
-}
-
-impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
-    pub fn new_with_options(
-        simple_api: Arc<Mutex<dyn SimpleAPICommon<Client, Req, Res, Header, B>>>,
-    ) -> Self {
-        CommonAPI { simple_api }
-    }
-
+impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
     pub fn set_base_url(&self, url: Url) {
-        self.simple_api.lock().unwrap().set_base_url(url);
+        self.get_simple_api().lock().unwrap().set_base_url(url);
     }
-    pub fn get_base_url_clone(&self) -> Url {
-        self.simple_api.lock().unwrap().get_base_url().clone()
+    pub fn get_base_url(&self) -> Url {
+        self.get_simple_api().lock().unwrap().get_base_url()
     }
-    pub fn set_default_header(&self, header: Header) {
-        self.simple_api.lock().unwrap().set_default_header(header);
+    pub fn set_default_header(&self, header: Option<Header>) {
+        self.get_simple_api()
+            .lock()
+            .unwrap()
+            .set_default_header(header);
     }
-    pub fn get_default_header_clone(&self) -> Header {
-        self.simple_api.lock().unwrap().get_default_header()
+    pub fn get_default_header(&self) -> Option<Header> {
+        self.get_simple_api().lock().unwrap().get_default_header()
     }
     pub fn set_client(&self, client: Arc<dyn ClientCommon<Client, Req, Res, Header, B>>) {
-        self.simple_api
+        self.get_simple_api()
             .lock()
             .unwrap()
             .get_simple_http()
             .set_client(client);
     }
     pub fn set_timeout_millisecond(&self, timeout_millisecond: u64) {
-        self.simple_api
+        self.get_simple_api()
             .lock()
             .unwrap()
             .get_simple_http()
             .timeout_millisecond = timeout_millisecond;
     }
     pub fn get_timeout_millisecond(&self) -> u64 {
-        self.simple_api
+        self.get_simple_api()
             .lock()
             .unwrap()
             .get_simple_http()
@@ -138,21 +88,21 @@ impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
     }
 
     pub fn add_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Req>>) {
-        self.simple_api
+        self.get_simple_api()
             .lock()
             .unwrap()
             .get_simple_http()
             .add_interceptor(interceptor);
     }
     pub fn add_interceptor_front(&mut self, interceptor: Arc<dyn Interceptor<Req>>) {
-        self.simple_api
+        self.get_simple_api()
             .lock()
             .unwrap()
             .get_simple_http()
             .add_interceptor_front(interceptor);
     }
     pub fn delete_interceptor(&mut self, interceptor: Arc<dyn Interceptor<Req>>) {
-        self.simple_api
+        self.get_simple_api()
             .lock()
             .unwrap()
             .get_simple_http()
@@ -160,7 +110,7 @@ impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
     }
 }
 
-impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B>
+impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B>
 where
     Req: 'static,
 {
@@ -168,7 +118,7 @@ where
         &mut self,
         func: impl FnMut(&mut Req) -> StdResult<(), Box<dyn StdError>> + Send + Sync + 'static,
     ) -> Arc<InterceptorFunc<Req>> {
-        self.simple_api
+        self.get_simple_api()
             .lock()
             .unwrap()
             .get_simple_http()
@@ -176,29 +126,35 @@ where
     }
 }
 
-impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
+impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
     pub fn make_api_response_only<R>(
         &self,
+        base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
         method: Method,
         relative_url: impl Into<String>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
     ) -> APIResponseOnly<R, Client, Req, Res, Header, B> {
         APIResponseOnly {
-            0: self.make_api_no_body(method, relative_url, response_deserializer, _return_type),
+            0: self.make_api_no_body(
+                base,
+                method,
+                relative_url,
+                response_deserializer,
+                _return_type,
+            ),
         }
     }
     pub fn make_api_no_body<R>(
         &self,
+        base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
         method: Method,
         relative_url: impl Into<String>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
     ) -> APINoBody<R, Client, Req, Res, Header, B> {
         APINoBody {
-            base: CommonAPI {
-                simple_api: self.simple_api.clone(),
-            },
+            base,
             method,
             relative_url: relative_url.into(),
             response_deserializer,
@@ -207,6 +163,7 @@ impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
     }
     pub fn make_api_has_body<T, R>(
         &self,
+        base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
         method: Method,
         relative_url: impl Into<String>,
         content_type: impl Into<String>,
@@ -215,9 +172,7 @@ impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
         _return_type: &R,
     ) -> APIHasBody<T, R, Client, Req, Res, Header, B> {
         APIHasBody {
-            base: CommonAPI {
-                simple_api: self.simple_api.clone(),
-            },
+            base,
             method,
             relative_url: relative_url.into(),
             content_type: content_type.into(),
@@ -227,98 +182,31 @@ impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
     }
 }
 
-impl<C, B> CommonAPI<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
-where
-    C: Connect + Clone + Send + Sync + 'static,
-    B: HttpBody + Send + 'static,
-    B::Data: Send,
-    B::Error: Into<Box<dyn StdError + Send + Sync>>,
-{
-    pub async fn _call_common(
-        &self,
-        method: Method,
-        header: Option<HeaderMap>,
-        relative_url: impl Into<String>,
-        content_type: impl Into<String>,
-        path_param: Option<impl Into<PathParam>>,
-        query_param: Option<impl Into<QueryParam>>,
-        body: B,
-    ) -> StdResult<Box<B>, Box<dyn StdError>> {
-        let mut simple_api = self.simple_api.lock().unwrap();
-        let mut req = simple_api.make_request(
-            method,
-            relative_url,
-            content_type,
-            path_param,
-            query_param,
-            body,
-        )?;
-
-        if let Some(header) = header {
-            let header_existing = req.headers_mut();
-            for (k, v) in header.iter() {
-                header_existing.insert(k, v.clone());
-            }
-        }
-
-        let body = simple_api
-            .get_simple_http()
-            .request(req)
-            .await??
-            .into_body();
-
-        Ok(Box::new(body))
-    }
-
-    pub async fn do_request(
-        &self,
-        method: Method,
-        header: Option<HeaderMap>,
-        relative_url: impl Into<String>,
-        content_type: impl Into<String>,
-        path_param: Option<impl Into<PathParam>>,
-        query_param: Option<impl Into<QueryParam>>,
-        body: B,
-    ) -> StdResult<Box<B>, Box<dyn StdError>> {
-        self._call_common(
-            method,
-            header,
-            relative_url,
-            content_type,
-            path_param,
-            query_param,
-            body,
-        )
-        .await
-    }
-}
-
 // APIResponseOnly API with only response options
 // R: Response body Type
 pub struct APIResponseOnly<R, Client, Req, Res, Header, B>(
     APINoBody<R, Client, Req, Res, Header, B>,
 );
-impl<R, C>
-    APIResponseOnly<R, Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+impl<R, Client, Req, Res, Header, B> APIResponseOnly<R, Client, Req, Res, Header, B>
 where
-    C: Connect + Clone + Send + Sync + 'static,
-    // B: HttpBody + Send + 'static,
-    // B::Data: Send,
-    // B::Error: Into<Box<dyn StdError + Send + Sync>>,
+// C: Connect + Clone + Send + Sync + 'static,
+// B: HttpBody + Send + 'static,
+// B::Data: Send,
+// B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     pub async fn call(&self) -> StdResult<Box<R>, Box<dyn StdError>>
     where
-        Body: Default,
+        B: Default,
     {
         self.call_with_options(None, None::<QueryParam>).await
     }
     pub async fn call_with_options(
         &self,
-        header: Option<HeaderMap>,
+        header: Option<Header>,
         query_param: Option<impl Into<QueryParam>>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
-        Body: Default,
+        B: Default,
     {
         self.0
             .call_with_options(header, None::<PathParam>, query_param)
@@ -329,23 +217,23 @@ where
 // APINoBody API without request body options
 // R: Response body Type
 pub struct APINoBody<R, Client, Req, Res, Header, B> {
-    base: CommonAPI<Client, Req, Res, Header, B>,
+    base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
     pub method: Method,
     pub relative_url: String,
     pub content_type: String,
 
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<R, C> APINoBody<R, Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+impl<R, Client, Req, Res, Header, B> APINoBody<R, Client, Req, Res, Header, B>
 where
-    C: Connect + Clone + Send + Sync + 'static,
-    // B: HttpBody + Send + 'static,
-    // B::Data: Send,
-    // B::Error: Into<Box<dyn StdError + Send + Sync>>,
+// C: Connect + Clone + Send + Sync + 'static,
+// B: HttpBody + Send + 'static,
+// B::Data: Send,
+// B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     pub async fn call(&self, path_param: Option<PathParam>) -> StdResult<Box<R>, Box<dyn StdError>>
     where
-        Body: Default,
+        B: Default,
     {
         self.call_with_options(None, path_param, None::<QueryParam>)
             .await
@@ -353,28 +241,41 @@ where
 
     pub async fn call_with_options(
         &self,
-        header: Option<HeaderMap>,
+        header: Option<Header>,
         path_param: Option<impl Into<PathParam>>,
         query_param: Option<impl Into<QueryParam>>,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
-        Body: Default,
+        B: Default,
     {
-        let mut body = self
+        let body = self
             .base
             ._call_common(
                 self.method.clone(),
                 header,
                 self.relative_url.clone(),
                 self.content_type.clone(),
-                path_param,
-                query_param,
-                Body::default(),
+                if let Some(v) = path_param {
+                    Some(v.into())
+                } else {
+                    None
+                },
+                if let Some(v) = query_param {
+                    Some(v.into())
+                } else {
+                    None
+                },
+                B::default(),
             )
             .await?;
         // let mut target = Box::new(target);
         // let body = Box::new(body);
-        let bytes = hyper::body::to_bytes(body.as_mut()).await?;
+        // let bytes = hyper::body::to_bytes(*body).await?;
+        let result = self.base.body_to_bytes(*body).await;
+        if result.is_err() {
+            return Err(result.err().unwrap());
+        }
+        let bytes = result.ok().unwrap();
         let target = self.response_deserializer.decode(&bytes)?;
 
         Ok(target)
@@ -385,7 +286,7 @@ where
 // T: Request body Type
 // R: Response body Type
 pub struct APIHasBody<T, R, Client, Req, Res, Header, B> {
-    base: CommonAPI<Client, Req, Res, Header, B>,
+    base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
     pub method: Method,
     pub relative_url: String,
     pub content_type: String,
@@ -393,13 +294,12 @@ pub struct APIHasBody<T, R, Client, Req, Res, Header, B> {
     pub request_serializer: Arc<dyn BodySerializer<T, B>>,
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<T, R, C>
-    APIHasBody<T, R, Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+impl<T, R, Client, Req, Res, Header, B> APIHasBody<T, R, Client, Req, Res, Header, B>
 where
-    C: Connect + Clone + Send + Sync + 'static,
-    // B: HttpBody + Send + 'static,
-    // B::Data: Send,
-    // B::Error: Into<Box<dyn StdError + Send + Sync>>,
+// C: Connect + Clone + Send + Sync + 'static,
+// B: HttpBody + Send + 'static,
+// B::Data: Send,
+// B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     pub async fn call(
         &self,
@@ -407,7 +307,7 @@ where
         sent_body: T,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
-        Body: Default,
+        B: Default,
     {
         self.call_with_options(None, path_param, None::<QueryParam>, sent_body)
             .await
@@ -415,31 +315,44 @@ where
 
     pub async fn call_with_options(
         &self,
-        header: Option<HeaderMap>,
+        header: Option<Header>,
         path_param: Option<impl Into<PathParam>>,
         query_param: Option<impl Into<QueryParam>>,
         sent_body: T,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
-        Body: Default,
+        B: Default,
     {
         // let mut sent_body = Box::new(sent_body);
-        let mut body = self
+        let body = self
             .base
             ._call_common(
                 self.method.clone(),
                 header,
                 self.relative_url.clone(),
                 self.content_type.clone(),
-                path_param,
-                query_param,
+                if let Some(v) = path_param {
+                    Some(v.into())
+                } else {
+                    None
+                },
+                if let Some(v) = query_param {
+                    Some(v.into())
+                } else {
+                    None
+                },
                 self.request_serializer.encode(&sent_body)?,
             )
             .await?;
 
         // let mut target = Box::new(target);
         // let body = Box::new(body);
-        let bytes = hyper::body::to_bytes(body.as_mut()).await?;
+        // let bytes = hyper::body::to_bytes(*body).await?;
+        let result = self.base.body_to_bytes(*body).await;
+        if result.is_err() {
+            return Err(result.err().unwrap());
+        }
+        let bytes = result.ok().unwrap();
         let target = self.response_deserializer.decode(&bytes)?;
 
         Ok(target)
@@ -450,20 +363,19 @@ where
 // T: Request body Type(multipart)
 // R: Response body Type
 pub struct APIMultipart<T, R, Client, Req, Res, Header, B> {
-    pub base: CommonAPI<Client, Req, Res, Header, B>,
+    pub base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
     pub method: Method,
     pub relative_url: String,
     // pub content_type: String,
     pub request_serializer: Arc<dyn BodySerializer<T, (String, B)>>,
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<T, R, C>
-    APIMultipart<T, R, Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+impl<T, R, Client, Req, Res, Header, B> APIMultipart<T, R, Client, Req, Res, Header, B>
 where
-    C: Connect + Clone + Send + Sync + 'static,
-    // B: HttpBody + Send + 'static,
-    // B::Data: Send,
-    // B::Error: Into<Box<dyn StdError + Send + Sync>>,
+// C: Connect + Clone + Send + Sync + 'static,
+// B: HttpBody + Send + 'static,
+// B::Data: Send,
+// B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     pub async fn call(
         &self,
@@ -471,7 +383,7 @@ where
         sent_body: T,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
-        Body: Default,
+        B: Default,
     {
         self.call_with_options(None, path_param, None::<QueryParam>, sent_body)
             .await
@@ -479,32 +391,45 @@ where
 
     pub async fn call_with_options(
         &self,
-        header: Option<HeaderMap>,
+        header: Option<Header>,
         path_param: Option<impl Into<PathParam>>,
         query_param: Option<impl Into<QueryParam>>,
         sent_body: T,
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
-        Body: Default,
+        B: Default,
     {
         // let mut sent_body = Box::new(sent_body);
         let (content_type_with_boundary, sent_body) = self.request_serializer.encode(&sent_body)?;
-        let mut body = self
+        let body = self
             .base
             ._call_common(
                 self.method.clone(),
                 header,
                 self.relative_url.clone(),
                 content_type_with_boundary,
-                path_param,
-                query_param,
+                if let Some(v) = path_param {
+                    Some(v.into())
+                } else {
+                    None
+                },
+                if let Some(v) = query_param {
+                    Some(v.into())
+                } else {
+                    None
+                },
                 sent_body,
             )
             .await?;
 
         // let mut target = Box::new(target);
         // let body = Box::new(body);
-        let bytes = hyper::body::to_bytes(body.as_mut()).await?;
+        // let bytes = hyper::body::to_bytes(*body).await?;
+        let result = self.base.body_to_bytes(*body).await;
+        if result.is_err() {
+            return Err(result.err().unwrap());
+        }
+        let bytes = result.ok().unwrap();
         let target = self.response_deserializer.decode(&bytes)?;
 
         Ok(target)
@@ -527,10 +452,10 @@ impl<T: Future> Outputting for T {}
 pub struct SimpleAPI<Client, Req, Res, Header, B> {
     pub simple_http: SimpleHTTP<Client, Req, Res, Header, B>,
     pub base_url: Url,
-    pub default_header: HeaderMap,
+    pub default_header: Option<Header>,
 }
 
-impl<Client, Req, Res, Header, B> SimpleAPI<Client, Req, Res, Header, B> {
+impl<Client, Req, Res, Header: Default, B> SimpleAPI<Client, Req, Res, Header, B> {
     pub fn new_with_options(
         simple_http: SimpleHTTP<Client, Req, Res, Header, B>,
         base_url: Url,
@@ -538,7 +463,7 @@ impl<Client, Req, Res, Header, B> SimpleAPI<Client, Req, Res, Header, B> {
         SimpleAPI {
             simple_http,
             base_url,
-            default_header: HeaderMap::new(),
+            default_header: None,
         }
     }
 }

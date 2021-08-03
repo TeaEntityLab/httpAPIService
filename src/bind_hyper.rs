@@ -7,6 +7,7 @@ use std::error::Error as StdError;
 use std::future::Future;
 use std::pin::Pin;
 use std::result::Result as StdResult;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -17,7 +18,7 @@ use bytes::Bytes;
 use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
-use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
+use hyper::{Body, Client, Error, HeaderMap, Request, Response, Result, Uri};
 use serde::Serialize;
 use url::Url;
 
@@ -26,7 +27,7 @@ use super::common::{
     DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES,
 };
 use super::simple_api::{
-    APIMultipart, BodyDeserializer, BodySerializer, CommonAPI, SimpleAPI, SimpleAPICommon,
+    APIMultipart, BaseService, BodyDeserializer, BodySerializer, SimpleAPI, SimpleAPICommon,
 };
 use super::simple_http::{
     ClientCommon, FormDataParseError, SimpleHTTP, SimpleHTTPResponse, DEFAULT_TIMEOUT_MILLISECOND,
@@ -107,10 +108,10 @@ impl<Client, Req, Res, B> SimpleAPICommon<Client, Req, Res, HeaderMap, B>
     fn get_base_url(&self) -> Url {
         self.0.base_url.clone()
     }
-    fn set_default_header(&mut self, header: HeaderMap) {
+    fn set_default_header(&mut self, header: Option<HeaderMap>) {
         self.0.default_header = header;
     }
-    fn get_default_header(&self) -> HeaderMap {
+    fn get_default_header(&self) -> Option<HeaderMap> {
         self.0.default_header.clone()
     }
 
@@ -245,6 +246,50 @@ where
     }
 }
 
+#[derive(Debug)]
+pub struct HyperError(Error);
+impl StdError for HyperError {}
+
+impl std::fmt::Display for HyperError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/*
+`CommonAPI` implements `make_api_response_only()`/`make_api_no_body()`/`make_api_has_body()`,
+for Retrofit-like usages.
+# Arguments
+* `C` - The generic type of Hyper client Connector
+* `B` - The generic type of Hyper client Body
+# Remarks
+It's inspired by `Retrofit`.
+*/
+// #[derive(Clone)]
+pub struct CommonAPI<Client, Req, Res, Header, B> {
+    pub simple_api: Arc<Mutex<dyn SimpleAPICommon<Client, Req, Res, Header, B>>>,
+}
+
+impl<Client, Req, Res, Header, B> Clone for CommonAPI<Client, Req, Res, Header, B> {
+    fn clone(&self) -> Self {
+        CommonAPI {
+            simple_api: self.simple_api.clone(),
+        }
+    }
+}
+
+impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
+    pub fn new_with_options(
+        simple_api: Arc<Mutex<dyn SimpleAPICommon<Client, Req, Res, Header, B>>>,
+    ) -> Self {
+        Self { simple_api }
+    }
+
+    pub fn new_copy(&self) -> Box<CommonAPI<Client, Req, Res, Header, B>> {
+        return Box::new(self.clone());
+    }
+}
+
 impl
     CommonAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
 {
@@ -269,7 +314,65 @@ impl
     }
 }
 
-impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+impl Default
+    for CommonAPI<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    >
+{
+    fn default() -> CommonAPI<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        HeaderMap,
+        Body,
+    > {
+        CommonAPI::new_for_hyper()
+    }
+}
+
+impl<C, B> dyn BaseService<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+    B: HttpBody + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    pub async fn do_request(
+        &self,
+        method: Method,
+        header: Option<HeaderMap>,
+        relative_url: impl Into<String>,
+        content_type: impl Into<String>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
+        body: B,
+    ) -> StdResult<Box<B>, Box<dyn StdError>> {
+        self._call_common(
+            method,
+            header,
+            relative_url.into(),
+            content_type.into(),
+            if let Some(v) = path_param {
+                Some(v.into())
+            } else {
+                None
+            },
+            if let Some(v) = query_param {
+                Some(v.into())
+            } else {
+                None
+            },
+            body,
+        )
+        .await
+    }
+}
+
+impl<C> dyn BaseService<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
 where
     C: Connect + Clone + Send + Sync + 'static,
 {
@@ -287,20 +390,37 @@ where
         self._call_common(
             method,
             header,
-            relative_url,
+            relative_url.into(),
             content_type,
-            path_param,
-            query_param,
+            if let Some(v) = path_param {
+                Some(v.into())
+            } else {
+                None
+            },
+            if let Some(v) = query_param {
+                Some(v.into())
+            } else {
+                None
+            },
             body,
         )
         .await
     }
 }
 
-impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body> {
+impl<C> dyn BaseService<Client<C, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body> {
     #[cfg(feature = "multipart")]
     pub fn make_api_multipart<R>(
         &self,
+        base: Arc<
+            dyn BaseService<
+                Client<C, Body>,
+                Request<Body>,
+                Result<Response<Body>>,
+                HeaderMap,
+                Body,
+            >,
+        >,
         method: Method,
         relative_url: impl Into<String>,
         // request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
@@ -316,14 +436,151 @@ impl<C> CommonAPI<Client<C, Body>, Request<Body>, Result<Response<Body>>, Header
         Body,
     > {
         APIMultipart {
-            base: CommonAPI {
-                simple_api: self.simple_api.clone(),
-            },
+            base,
             method,
             relative_url: relative_url.into(),
             request_serializer: Arc::new(DEFAULT_MULTIPART_SERIALIZER),
             response_deserializer,
         }
+    }
+}
+
+impl<C, B> CommonAPI<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+    B: HttpBody + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    pub fn as_base_service_shared(
+        &self,
+    ) -> Arc<dyn BaseService<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>> {
+        Arc::new(*self.new_copy())
+    }
+    pub fn as_base_service_setter(
+        &self,
+    ) -> Box<dyn BaseService<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>> {
+        self.new_copy()
+    }
+}
+
+impl<C, B> BaseService<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+    for CommonAPI<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+    B: HttpBody + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    fn body_to_bytes(
+        &self,
+        body: B,
+    ) -> Pin<Box<dyn Future<Output = StdResult<Bytes, Box<dyn StdError + Send + Sync>>>>> {
+        Box::pin(async {
+            match hyper::body::to_bytes(body).await {
+                Ok(v) => Ok(v),
+                Err(e) => Err(e.into()),
+            }
+        })
+    }
+
+    fn get_simple_api(
+        &self,
+    ) -> &Arc<Mutex<dyn SimpleAPICommon<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>>>
+    {
+        &self.simple_api
+    }
+
+    fn _call_common(
+        &self,
+        method: Method,
+        header: Option<HeaderMap>,
+        relative_url: String,
+        content_type: String,
+        path_param: Option<PathParam>,
+        query_param: Option<QueryParam>,
+        body: B,
+    ) -> Pin<Box<dyn Future<Output = StdResult<Box<B>, Box<dyn StdError>>>>> {
+        let simple_api = self.simple_api.clone();
+
+        Box::pin(async move {
+            let mut simple_api = simple_api.lock().unwrap();
+            let mut req = simple_api.make_request(
+                method,
+                relative_url,
+                content_type,
+                path_param,
+                query_param,
+                body,
+            )?;
+
+            if let Some(header) = header {
+                let header_existing = req.headers_mut();
+                for (k, v) in header.iter() {
+                    header_existing.insert(k, v.clone());
+                }
+            }
+
+            let body = simple_api
+                .get_simple_http()
+                .request(req)
+                .await??
+                .into_body();
+
+            Ok(Box::new(body))
+        })
+    }
+}
+
+impl<C, B> dyn SimpleAPICommon<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+where
+    C: Connect + Clone + Send + Sync + 'static,
+    B: HttpBody + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    pub fn make_request(
+        &self,
+        method: Method,
+        relative_url: impl Into<String>,
+        content_type: impl Into<String>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
+        body: B,
+    ) -> StdResult<Request<B>, Box<dyn StdError>> {
+        let mut relative_url = relative_url.into();
+        if let Some(path_param) = path_param {
+            for (k, v) in path_param.into().into_iter() {
+                relative_url = relative_url.replace(&("{".to_string() + &k + "}"), &v);
+            }
+        }
+
+        let mut req = Request::new(body);
+        // Url
+        match self.get_base_url().join(&relative_url) {
+            Ok(mut url) => {
+                if let Some(query_param) = query_param {
+                    for (k, v) in query_param.into().into_iter() {
+                        url.set_query(Some(&(k + "=" + &v)));
+                    }
+                }
+                *req.uri_mut() = Uri::from_str(url.as_str())?;
+            }
+            Err(e) => return Err(Box::new(e)),
+        };
+        // Method
+        *req.method_mut() = method;
+        // Header
+        if let Some(header) = self.get_default_header() {
+            *req.headers_mut() = header.clone();
+        }
+        let content_type = content_type.into();
+        if !content_type.is_empty() {
+            req.headers_mut()
+                .insert(CONTENT_TYPE, HeaderValue::from_str(&content_type)?);
+        }
+
+        Ok(req)
     }
 }
 
