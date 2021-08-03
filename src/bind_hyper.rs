@@ -22,9 +22,9 @@ use hyper::{Body, Client, Error, HeaderMap, Request, Response, Result, Uri};
 use url::Url;
 
 use super::common::{PathParam, QueryParam};
-use super::simple_api::{BaseService, BodySerializer, SimpleAPI, SimpleAPICommon};
+use super::simple_api::{BaseAPI, BaseService, BodySerializer, SimpleAPI};
 use super::simple_http::{
-    ClientCommon, FormDataParseError, SimpleHTTP, SimpleHTTPResponse, DEFAULT_TIMEOUT_MILLISECOND,
+    BaseClient, FormDataParseError, SimpleHTTP, SimpleHTTPResponse, DEFAULT_TIMEOUT_MILLISECOND,
 };
 
 #[cfg(feature = "for_serde")]
@@ -44,7 +44,7 @@ use multer;
 use multer::Multipart;
 
 pub struct HyperClient<C, B>(Client<C, B>);
-impl<C, B> ClientCommon<Client<C, B>, Request<B>, Result<Response<Body>>, HeaderMap, B>
+impl<C, B> BaseClient<Client<C, B>, Request<B>, Result<Response<Body>>, HeaderMap, B>
     for HyperClient<C, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
@@ -58,7 +58,7 @@ where
 }
 
 pub struct HyperSimpleAPI<Client, Req, Res, Header, B>(SimpleAPI<Client, Req, Res, Header, B>);
-impl<Client, Req, Res, B> SimpleAPICommon<Client, Req, Res, HeaderMap, B>
+impl<Client, Req, Res, B> BaseAPI<Client, Req, Res, HeaderMap, B>
     for HyperSimpleAPI<Client, Req, Res, HeaderMap, B>
 {
     fn set_base_url(&mut self, url: Url) {
@@ -196,7 +196,7 @@ It's inspired by `Retrofit`.
 */
 // #[derive(Clone)]
 pub struct CommonAPI<Client, Req, Res, Header, B> {
-    pub simple_api: Arc<Mutex<dyn SimpleAPICommon<Client, Req, Res, Header, B>>>,
+    pub simple_api: Arc<Mutex<dyn BaseAPI<Client, Req, Res, Header, B>>>,
 }
 
 impl<Client, Req, Res, Header, B> Clone for CommonAPI<Client, Req, Res, Header, B> {
@@ -209,7 +209,7 @@ impl<Client, Req, Res, Header, B> Clone for CommonAPI<Client, Req, Res, Header, 
 
 impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
     pub fn new_with_options(
-        simple_api: Arc<Mutex<dyn SimpleAPICommon<Client, Req, Res, Header, B>>>,
+        simple_api: Arc<Mutex<dyn BaseAPI<Client, Req, Res, Header, B>>>,
     ) -> Self {
         Self { simple_api }
     }
@@ -376,8 +376,7 @@ where
 
     fn get_simple_api(
         &self,
-    ) -> &Arc<Mutex<dyn SimpleAPICommon<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>>>
-    {
+    ) -> &Arc<Mutex<dyn BaseAPI<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>>> {
         &self.simple_api
     }
 
@@ -422,7 +421,7 @@ where
     }
 }
 
-impl<C, B> dyn SimpleAPICommon<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+impl<C, B> dyn BaseAPI<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,

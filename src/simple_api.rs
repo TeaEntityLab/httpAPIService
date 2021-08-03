@@ -20,7 +20,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 pub use super::common::{PathParam, QueryParam};
 use super::simple_http::{
-    data_and_boundary_from_multipart, get_content_type_from_multipart_boundary, ClientCommon,
+    data_and_boundary_from_multipart, get_content_type_from_multipart_boundary, BaseClient,
     Interceptor, InterceptorFunc, SimpleHTTP,
 };
 
@@ -158,7 +158,7 @@ impl<R: DeserializeOwned + 'static> BodyDeserializer<R> for SerdeJsonDeserialize
 #[cfg(feature = "for_serde")]
 pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
 
-pub trait SimpleAPICommon<Client, Req, Res, Header, B> {
+pub trait BaseAPI<Client, Req, Res, Header, B> {
     fn set_base_url(&mut self, url: Url);
     fn get_base_url(&self) -> Url;
     fn set_default_header(&mut self, header: Option<Header>);
@@ -168,7 +168,7 @@ pub trait SimpleAPICommon<Client, Req, Res, Header, B> {
 }
 
 pub trait BaseService<Client, Req, Res, Header, B> {
-    fn get_simple_api(&self) -> &Arc<Mutex<dyn SimpleAPICommon<Client, Req, Res, Header, B>>>;
+    fn get_simple_api(&self) -> &Arc<Mutex<dyn BaseAPI<Client, Req, Res, Header, B>>>;
     fn _call_common(
         &self,
         method: Method,
@@ -202,7 +202,7 @@ impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
     pub fn get_default_header(&self) -> Option<Header> {
         self.get_simple_api().lock().unwrap().get_default_header()
     }
-    pub fn set_client(&self, client: Arc<dyn ClientCommon<Client, Req, Res, Header, B>>) {
+    pub fn set_client(&self, client: Arc<dyn BaseClient<Client, Req, Res, Header, B>>) {
         self.get_simple_api()
             .lock()
             .unwrap()
