@@ -24,9 +24,9 @@ default = [
   "for_hyper", "multipart", "for_serde"
 ]
 pure = []
+for_hyper = [ "hyper", "tokio" ]
 multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
-for_hyper = [ "hyper", "tokio" ]
 
 test_runtime = [
 "for_hyper", "multipart", "for_serde", "fp_rust", "hyper/full",
@@ -35,12 +35,14 @@ test_runtime = [
 [dependencies]
 
 # Required
-hyper = { version = "^0.14.0", optional = true, features = ["client", "http1", "http2", "stream", "tcp",] }
-tokio = { version = "^1.8.0", optional = true,features = ["time", "macros",] }
 bytes = "^1.0.0"
 http = "^0.2.4"
 futures="^0.3.0"
 url="^2.2.0"
+
+# for_hyper
+hyper = { version = "^0.14.0", optional = true, features = ["client", "http1", "http2", "stream", "tcp",] }
+tokio = { version = "^1.8.0", optional = true,features = ["time", "macros",] }
 
 # multipart
 formdata = { version = "^0.13.0", optional = true }
@@ -55,11 +57,11 @@ serde_json = { version = "^1.0", optional = true }
 fp_rust={ version = "^0.2.4", features = ["for_futures"], optional = true }
 
 [[test]]
-name = "simple_http"
-path = "tests/simple_http.rs"
+name = "hyper_simple_http"
+path = "tests/hyper_simple_http.rs"
 required-features = ["test_runtime"]
 
 [[test]]
-name = "simple_api"
-path = "tests/simple_api.rs"
+name = "hyper_simple_api"
+path = "tests/hyper_simple_api.rs"
 required-features = ["test_runtime"]

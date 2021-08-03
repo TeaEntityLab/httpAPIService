@@ -24,6 +24,9 @@ Thus I implemented hyperAPIService. I hope you would like it :)
 # Features
 
 * Retrofit-like API for WebService Restful API
+  * Engine:
+    * Hyper **feature: for_hyper**
+    * *`< To Be Continued I \ I /`* ...
   * Common:
     * Intercept the request: *`InterceptorFunc`* (struct) / *`Interceptor`* (trait)
     * Shared Connection Timeout: *`set_timeout_millisecond()`*
@@ -47,8 +50,9 @@ Note:
 ```toml
 [features]
 default = [
-  "multipart", "for_serde"
+  "for_hyper", "multipart", "for_serde"
 ]
+for_hyper = [ "hyper", "tokio" ]
 multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
 pure = []
@@ -56,12 +60,14 @@ pure = []
 [dependencies]
 
 # Required
-hyper = { version = "^0.14.0", features = ["full"] }
-tokio = { version = "^1.8.0", features = ["full"] }
 bytes = "^1.0.0"
 http = "^0.2.4"
 futures="^0.3.0"
 url="^2.2.0"
+
+# for_hyper
+hyper = { version = "^0.14.0", optional = true, features = ["client", "http1", "http2", "stream", "tcp",] }
+tokio = { version = "^1.8.0", optional = true,features = ["time", "macros",] }
 
 # multipart
 formdata = { version = "^0.13.0", optional = true }
