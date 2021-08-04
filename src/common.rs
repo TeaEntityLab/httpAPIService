@@ -3,8 +3,12 @@ use std::io;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use futures::executor::block_on;
+use bytes::Bytes;
+// use futures::executor::block_on;
+use futures::task::SpawnExt;
 use futures::{channel::mpsc, SinkExt, Stream};
+
+use fp_rust::common::shared_thread_pool;
 
 /*
 `PathParam` Path params for API usages
@@ -52,13 +56,36 @@ where
 {
     fn write(&mut self, d: &[u8]) -> io::Result<usize> {
         let len = d.len();
-        block_on(self.0.send(d.into()))
-            .map(|()| len)
+        let mut future = self.0.clone();
+        let d = Bytes::from(d.to_vec());
+        shared_thread_pool()
+            .inner
+            .lock()
+            .unwrap()
+            .spawn_with_handle(async move {
+                match future.send(d.as_ref().into()).await {
+                    Err(e) => println!("Error: WriteForStream send -> {:?}", e),
+                    _ => {}
+                };
+            })
+            .map(|_| len)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        block_on(self.0.flush()).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        let mut future = self.0.clone();
+        shared_thread_pool()
+            .inner
+            .lock()
+            .unwrap()
+            .spawn_with_handle(async move {
+                match future.flush().await {
+                    Err(e) => println!("Error: WriteForStream flush -> {:?}", e),
+                    _ => {}
+                };
+            })
+            .map(|_| ())
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 }
 

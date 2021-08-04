@@ -5,6 +5,7 @@ In this module there're implementations & tests of `SimpleHTTP`.
 use std::collections::VecDeque;
 use std::error::Error as StdError;
 use std::future::Future;
+use std::io::Write;
 use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::str::FromStr;
@@ -72,11 +73,35 @@ where
         let boundary = formdata::generate_boundary();
         let boundary_thread = boundary.clone();
         let _ = match &self.thread_pool {
-            Some(thread_pool) => thread_pool.spawn_with_handle(async move {
-                formdata::write_formdata(&mut data, &boundary_thread, &origin)
+            Some(thread_pool) => thread_pool.spawn(async move {
+                match formdata::write_formdata(&mut data, &boundary_thread, &origin) {
+                    Err(e) => println!("Error -> write_formdata {:?}", e),
+                    _ => {}
+                };
+                match data.flush() {
+                    Err(e) => println!("Error -> flush {:?}", e),
+                    _ => {}
+                };
+                match data.0.close().await {
+                    Err(e) => println!("Error -> close {:?}", e),
+                    _ => {}
+                };
+                drop(data);
             }),
-            None => { shared_thread_pool().inner.lock().unwrap() }.spawn_with_handle(async move {
-                formdata::write_formdata(&mut data, &boundary_thread, &origin)
+            None => { shared_thread_pool().inner.lock().unwrap() }.spawn(async move {
+                match formdata::write_formdata(&mut data, &boundary_thread, &origin) {
+                    Err(e) => println!("Error -> write_formdata {:?}", e),
+                    _ => {}
+                };
+                match data.flush() {
+                    Err(e) => println!("Error -> flush {:?}", e),
+                    _ => {}
+                };
+                match data.0.close().await {
+                    Err(e) => println!("Error -> close {:?}", e),
+                    _ => {}
+                };
+                drop(data);
             }),
         };
 
