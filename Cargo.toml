@@ -30,7 +30,10 @@ multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
 
 test_runtime = [
-"for_hyper", "multipart", "for_serde", "fp_rust", "hyper/full",
+"for_hyper", "for_ureq",
+"multipart", "for_serde",
+
+"fp_rust", "hyper/full",
 ]
 
 [dependencies]
