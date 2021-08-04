@@ -67,7 +67,8 @@ where
     fn encode(&self, origin: FormData) -> StdResult<(String, B), Box<dyn StdError>> {
         // let mut data = Vec::<u8>::new();
 
-        let (tx, rx) = make_stream::<Vec<u8>>();
+        // let (tx, rx) = make_stream::<Vec<u8>>();
+        let (tx, rx) = make_stream::<StdResult<Vec<u8>, Box<dyn StdError + Send>>>();
         let mut data = WriteForStream::<Vec<u8>>(tx);
 
         let boundary = formdata::generate_boundary();
@@ -86,7 +87,7 @@ where
                     Err(e) => println!("Error -> close {:?}", e),
                     _ => {}
                 };
-                drop(data);
+                drop(data.0);
             }),
             None => { shared_thread_pool().inner.lock().unwrap() }.spawn(async move {
                 match formdata::write_formdata(&mut data, &boundary_thread, &origin) {
@@ -101,15 +102,19 @@ where
                     Err(e) => println!("Error -> close {:?}", e),
                     _ => {}
                 };
-                drop(data);
+                drop(data.0);
             }),
         };
 
         let content_type = get_content_type_from_multipart_boundary(boundary)?;
 
-        let body = rx.map(|y| Ok::<Bytes, Box<dyn StdError + Send + Sync>>(Bytes::from(y)));
+        let body = rx
+            .map(|y| Bytes::from(y.ok().unwrap()))
+            .into_future()
+            .map(|y| Ok::<Bytes, Box<dyn StdError + Send + Sync>>(y.0.unwrap()))
+            .into_stream();
 
-        Ok((content_type, B::from(Body::wrap_stream(Box::new(body)))))
+        Ok((content_type, B::from(Body::wrap_stream(body))))
     }
 }
 #[cfg(feature = "multipart")]

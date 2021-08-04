@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::io;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -48,7 +49,7 @@ macro_rules! hash_map_string {
 Credit: https://stackoverflow.com/users/155423/shepmaster
 From: https://stackoverflow.com/questions/56435409/how-do-i-stream-a-hyper-requests-body-from-a-slow-processing-side-thread-that-p
 */
-pub struct WriteForStream<T>(pub mpsc::Sender<T>);
+pub struct WriteForStream<T>(pub mpsc::Sender<Result<T, Box<dyn Error + Send>>>);
 
 impl<T> io::Write for WriteForStream<T>
 where
@@ -63,7 +64,7 @@ where
             .lock()
             .unwrap()
             .spawn_with_handle(async move {
-                match future.send(d.as_ref().into()).await {
+                match future.send(Ok(d.as_ref().into())).await {
                     Err(e) => println!("Error: WriteForStream send -> {:?}", e),
                     _ => {}
                 };
