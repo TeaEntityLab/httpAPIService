@@ -9,7 +9,6 @@ use std::result::Result as StdResult;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-use http::method::Method;
 use url::Url;
 
 #[cfg(feature = "multipart")]
@@ -158,17 +157,17 @@ impl<R: DeserializeOwned + 'static> BodyDeserializer<R> for SerdeJsonDeserialize
 #[cfg(feature = "for_serde")]
 pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
 
-pub trait BaseAPI<Client, Req, Res, Header, B> {
+pub trait BaseAPI<Client, Req, Res, Method, Header, B> {
     fn set_base_url(&mut self, url: Url);
     fn get_base_url(&self) -> Url;
     fn set_default_header(&mut self, header: Option<Header>);
     fn get_default_header(&self) -> Option<Header>;
 
-    fn get_simple_http(&mut self) -> &mut SimpleHTTP<Client, Req, Res, Header, B>;
+    fn get_simple_http(&mut self) -> &mut SimpleHTTP<Client, Req, Res, Method, Header, B>;
 }
 
-pub trait BaseService<Client, Req, Res, Header, B> {
-    fn get_simple_api(&self) -> &Arc<Mutex<dyn BaseAPI<Client, Req, Res, Header, B>>>;
+pub trait BaseService<Client, Req, Res, Method, Header, B> {
+    fn get_simple_api(&self) -> &Arc<Mutex<dyn BaseAPI<Client, Req, Res, Method, Header, B>>>;
     fn _call_common(
         &self,
         method: Method,
@@ -186,7 +185,7 @@ pub trait BaseService<Client, Req, Res, Header, B> {
     ) -> Pin<Box<dyn Future<Output = StdResult<Bytes, Box<dyn StdError + Send + Sync>>>>>;
 }
 
-impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
+impl<Client, Req, Res, Method, Header, B> dyn BaseService<Client, Req, Res, Method, Header, B> {
     pub fn set_base_url(&self, url: Url) {
         self.get_simple_api().lock().unwrap().set_base_url(url);
     }
@@ -202,7 +201,7 @@ impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
     pub fn get_default_header(&self) -> Option<Header> {
         self.get_simple_api().lock().unwrap().get_default_header()
     }
-    pub fn set_client(&self, client: Arc<dyn BaseClient<Client, Req, Res, Header, B>>) {
+    pub fn set_client(&self, client: Arc<dyn BaseClient<Client, Req, Res, Method, Header, B>>) {
         self.get_simple_api()
             .lock()
             .unwrap()
@@ -247,7 +246,7 @@ impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
     }
 }
 
-impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B>
+impl<Client, Req, Res, Method, Header, B> dyn BaseService<Client, Req, Res, Method, Header, B>
 where
     Req: 'static,
 {
@@ -263,15 +262,15 @@ where
     }
 }
 
-impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
+impl<Client, Req, Res, Method, Header, B> dyn BaseService<Client, Req, Res, Method, Header, B> {
     pub fn make_api_response_only<R>(
         &self,
-        base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
+        base: Arc<dyn BaseService<Client, Req, Res, Method, Header, B>>,
         method: Method,
         relative_url: impl Into<String>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
-    ) -> APIResponseOnly<R, Client, Req, Res, Header, B> {
+    ) -> APIResponseOnly<R, Client, Req, Res, Method, Header, B> {
         APIResponseOnly {
             0: self.make_api_no_body(
                 base,
@@ -284,12 +283,12 @@ impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
     }
     pub fn make_api_no_body<R>(
         &self,
-        base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
+        base: Arc<dyn BaseService<Client, Req, Res, Method, Header, B>>,
         method: Method,
         relative_url: impl Into<String>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
-    ) -> APINoBody<R, Client, Req, Res, Header, B> {
+    ) -> APINoBody<R, Client, Req, Res, Method, Header, B> {
         APINoBody {
             base,
             method,
@@ -300,14 +299,14 @@ impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
     }
     pub fn make_api_has_body<T, R>(
         &self,
-        base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
+        base: Arc<dyn BaseService<Client, Req, Res, Method, Header, B>>,
         method: Method,
         relative_url: impl Into<String>,
         content_type: impl Into<String>,
         request_serializer: Arc<dyn BodySerializer<T, B>>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
-    ) -> APIHasBody<T, R, Client, Req, Res, Header, B> {
+    ) -> APIHasBody<T, R, Client, Req, Res, Method, Header, B> {
         APIHasBody {
             base,
             method,
@@ -321,13 +320,13 @@ impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
     #[cfg(feature = "multipart")]
     pub fn make_api_multipart<R>(
         &self,
-        base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
+        base: Arc<dyn BaseService<Client, Req, Res, Method, Header, B>>,
         method: Method,
         relative_url: impl Into<String>,
         // request_serializer: Arc<dyn BodySerializer<FormData, (String, B)>>,
         response_deserializer: Arc<dyn BodyDeserializer<R>>,
         _return_type: &R,
-    ) -> APIMultipart<FormData, R, Client, Req, Res, Header, B>
+    ) -> APIMultipart<FormData, R, Client, Req, Res, Method, Header, B>
     where
         B: From<Bytes>,
     {
@@ -343,13 +342,16 @@ impl<Client, Req, Res, Header, B> dyn BaseService<Client, Req, Res, Header, B> {
 
 // APIResponseOnly API with only response options
 // R: Response body Type
-pub struct APIResponseOnly<R, Client, Req, Res, Header, B>(
-    APINoBody<R, Client, Req, Res, Header, B>,
+pub struct APIResponseOnly<R, Client, Req, Res, Method, Header, B>(
+    APINoBody<R, Client, Req, Res, Method, Header, B>,
 );
-impl<R, Client, Req, Res, Header, B> APIResponseOnly<R, Client, Req, Res, Header, B> {
+impl<R, Client, Req, Res, Method, Header, B>
+    APIResponseOnly<R, Client, Req, Res, Method, Header, B>
+{
     pub async fn call(&self) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
+        Method: Clone,
     {
         self.call_with_options(None, None::<QueryParam>).await
     }
@@ -360,6 +362,7 @@ impl<R, Client, Req, Res, Header, B> APIResponseOnly<R, Client, Req, Res, Header
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
+        Method: Clone,
     {
         self.0
             .call_with_options(header, None::<PathParam>, query_param)
@@ -369,18 +372,19 @@ impl<R, Client, Req, Res, Header, B> APIResponseOnly<R, Client, Req, Res, Header
 
 // APINoBody API without request body options
 // R: Response body Type
-pub struct APINoBody<R, Client, Req, Res, Header, B> {
-    base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
+pub struct APINoBody<R, Client, Req, Res, Method, Header, B> {
+    base: Arc<dyn BaseService<Client, Req, Res, Method, Header, B>>,
     pub method: Method,
     pub relative_url: String,
     pub content_type: String,
 
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<R, Client, Req, Res, Header, B> APINoBody<R, Client, Req, Res, Header, B> {
+impl<R, Client, Req, Res, Method, Header, B> APINoBody<R, Client, Req, Res, Method, Header, B> {
     pub async fn call(&self, path_param: Option<PathParam>) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
+        Method: Clone,
     {
         self.call_with_options(None, path_param, None::<QueryParam>)
             .await
@@ -394,6 +398,7 @@ impl<R, Client, Req, Res, Header, B> APINoBody<R, Client, Req, Res, Header, B> {
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
+        Method: Clone,
     {
         let body = self
             .base
@@ -432,8 +437,8 @@ impl<R, Client, Req, Res, Header, B> APINoBody<R, Client, Req, Res, Header, B> {
 // APIHasBody API with request body options
 // T: Request body Type
 // R: Response body Type
-pub struct APIHasBody<T, R, Client, Req, Res, Header, B> {
-    base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
+pub struct APIHasBody<T, R, Client, Req, Res, Method, Header, B> {
+    base: Arc<dyn BaseService<Client, Req, Res, Method, Header, B>>,
     pub method: Method,
     pub relative_url: String,
     pub content_type: String,
@@ -441,7 +446,9 @@ pub struct APIHasBody<T, R, Client, Req, Res, Header, B> {
     pub request_serializer: Arc<dyn BodySerializer<T, B>>,
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<T, R, Client, Req, Res, Header, B> APIHasBody<T, R, Client, Req, Res, Header, B> {
+impl<T, R, Client, Req, Res, Method, Header, B>
+    APIHasBody<T, R, Client, Req, Res, Method, Header, B>
+{
     pub async fn call(
         &self,
         path_param: Option<impl Into<PathParam>>,
@@ -449,6 +456,7 @@ impl<T, R, Client, Req, Res, Header, B> APIHasBody<T, R, Client, Req, Res, Heade
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
+        Method: Clone,
     {
         self.call_with_options(None, path_param, None::<QueryParam>, sent_body)
             .await
@@ -463,6 +471,7 @@ impl<T, R, Client, Req, Res, Header, B> APIHasBody<T, R, Client, Req, Res, Heade
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
+        Method: Clone,
     {
         // let mut sent_body = Box::new(sent_body);
         let body = self
@@ -503,15 +512,17 @@ impl<T, R, Client, Req, Res, Header, B> APIHasBody<T, R, Client, Req, Res, Heade
 // APIMultipart API with request body options
 // T: Request body Type(multipart)
 // R: Response body Type
-pub struct APIMultipart<T, R, Client, Req, Res, Header, B> {
-    pub base: Arc<dyn BaseService<Client, Req, Res, Header, B>>,
+pub struct APIMultipart<T, R, Client, Req, Res, Method, Header, B> {
+    pub base: Arc<dyn BaseService<Client, Req, Res, Method, Header, B>>,
     pub method: Method,
     pub relative_url: String,
     // pub content_type: String,
     pub request_serializer: Arc<dyn BodySerializer<T, (String, B)>>,
     pub response_deserializer: Arc<dyn BodyDeserializer<R>>,
 }
-impl<T, R, Client, Req, Res, Header, B> APIMultipart<T, R, Client, Req, Res, Header, B> {
+impl<T, R, Client, Req, Res, Method, Header, B>
+    APIMultipart<T, R, Client, Req, Res, Method, Header, B>
+{
     pub async fn call(
         &self,
         path_param: Option<impl Into<PathParam>>,
@@ -519,6 +530,7 @@ impl<T, R, Client, Req, Res, Header, B> APIMultipart<T, R, Client, Req, Res, Hea
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
+        Method: Clone,
     {
         self.call_with_options(None, path_param, None::<QueryParam>, sent_body)
             .await
@@ -533,6 +545,7 @@ impl<T, R, Client, Req, Res, Header, B> APIMultipart<T, R, Client, Req, Res, Hea
     ) -> StdResult<Box<R>, Box<dyn StdError>>
     where
         B: Default,
+        Method: Clone,
     {
         // let mut sent_body = Box::new(sent_body);
         let (content_type_with_boundary, sent_body) = self.request_serializer.encode(sent_body)?;
@@ -584,15 +597,15 @@ impl<T: Future> Outputting for T {}
 // type BodyDeserializerFuture<R> = Box<dyn Future<Output = BodyDeserializerFutureOutput<R>>>;
 
 // SimpleAPI SimpleAPI inspired by Retrofits
-pub struct SimpleAPI<Client, Req, Res, Header, B> {
-    pub simple_http: SimpleHTTP<Client, Req, Res, Header, B>,
+pub struct SimpleAPI<Client, Req, Res, Method, Header, B> {
+    pub simple_http: SimpleHTTP<Client, Req, Res, Method, Header, B>,
     pub base_url: Url,
     pub default_header: Option<Header>,
 }
 
-impl<Client, Req, Res, Header: Default, B> SimpleAPI<Client, Req, Res, Header, B> {
+impl<Client, Req, Res, Method, Header: Default, B> SimpleAPI<Client, Req, Res, Method, Header, B> {
     pub fn new_with_options(
-        simple_http: SimpleHTTP<Client, Req, Res, Header, B>,
+        simple_http: SimpleHTTP<Client, Req, Res, Method, Header, B>,
         base_url: Url,
     ) -> Self {
         SimpleAPI {

@@ -44,7 +44,7 @@ use multer;
 use multer::Multipart;
 
 pub struct HyperClient<C, B>(Client<C, B>);
-impl<C, B> BaseClient<Client<C, B>, Request<B>, Result<Response<Body>>, HeaderMap, B>
+impl<C, B> BaseClient<Client<C, B>, Request<B>, Result<Response<Body>>, Method, HeaderMap, B>
     for HyperClient<C, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
@@ -57,8 +57,10 @@ where
     }
 }
 
-pub struct HyperSimpleAPI<Client, Req, Res, Header, B>(SimpleAPI<Client, Req, Res, Header, B>);
-impl<Client, Req, Res, B> BaseAPI<Client, Req, Res, HeaderMap, B>
+pub struct HyperSimpleAPI<Client, Req, Res, Header, B>(
+    SimpleAPI<Client, Req, Res, Method, Header, B>,
+);
+impl<Client, Req, Res, B> BaseAPI<Client, Req, Res, Method, HeaderMap, B>
     for HyperSimpleAPI<Client, Req, Res, HeaderMap, B>
 {
     fn set_base_url(&mut self, url: Url) {
@@ -74,13 +76,20 @@ impl<Client, Req, Res, B> BaseAPI<Client, Req, Res, HeaderMap, B>
         self.0.default_header.clone()
     }
 
-    fn get_simple_http(&mut self) -> &mut SimpleHTTP<Client, Req, Res, HeaderMap, B> {
+    fn get_simple_http(&mut self) -> &mut SimpleHTTP<Client, Req, Res, Method, HeaderMap, B> {
         &mut self.0.simple_http
     }
 }
 
 impl
-    SimpleHTTP<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+    SimpleHTTP<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        Method,
+        HeaderMap,
+        Body,
+    >
 {
     /// Create a new SimpleHTTP with a Client with the default [config](Builder).
     ///
@@ -94,6 +103,7 @@ impl
         Client<HttpConnector, Body>,
         Request<Body>,
         Result<Response<Body>>,
+        Method,
         HeaderMap,
         Body,
     > {
@@ -109,6 +119,7 @@ impl Default
         Client<HttpConnector, Body>,
         Request<Body>,
         Result<Response<Body>>,
+        Method,
         HeaderMap,
         Body,
     >
@@ -117,6 +128,7 @@ impl Default
         Client<HttpConnector, Body>,
         Request<Body>,
         Result<Response<Body>>,
+        Method,
         HeaderMap,
         Body,
     > {
@@ -125,7 +137,14 @@ impl Default
 }
 
 impl
-    SimpleAPI<Client<HttpConnector, Body>, Request<Body>, Result<Response<Body>>, HeaderMap, Body>
+    SimpleAPI<
+        Client<HttpConnector, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        Method,
+        HeaderMap,
+        Body,
+    >
 {
     /// Create a new SimpleAPI with a Client with the default [config](Builder).
     ///
@@ -139,6 +158,7 @@ impl
         Client<HttpConnector, Body>,
         Request<Body>,
         Result<Response<Body>>,
+        Method,
         HeaderMap,
         Body,
     > {
@@ -154,6 +174,7 @@ impl Default
         Client<HttpConnector, Body>,
         Request<Body>,
         Result<Response<Body>>,
+        Method,
         HeaderMap,
         Body,
     >
@@ -162,6 +183,7 @@ impl Default
         Client<HttpConnector, Body>,
         Request<Body>,
         Result<Response<Body>>,
+        Method,
         HeaderMap,
         Body,
     > {
@@ -169,6 +191,7 @@ impl Default
             Client<HttpConnector, Body>,
             Request<Body>,
             Result<Response<Body>>,
+            Method,
             HeaderMap,
             Body,
         >::new_for_hyper()
@@ -196,7 +219,7 @@ It's inspired by `Retrofit`.
 */
 // #[derive(Clone)]
 pub struct CommonAPI<Client, Req, Res, Header, B> {
-    pub simple_api: Arc<Mutex<dyn BaseAPI<Client, Req, Res, Header, B>>>,
+    pub simple_api: Arc<Mutex<dyn BaseAPI<Client, Req, Res, Method, Header, B>>>,
 }
 
 impl<Client, Req, Res, Header, B> Clone for CommonAPI<Client, Req, Res, Header, B> {
@@ -209,7 +232,7 @@ impl<Client, Req, Res, Header, B> Clone for CommonAPI<Client, Req, Res, Header, 
 
 impl<Client, Req, Res, Header, B> CommonAPI<Client, Req, Res, Header, B> {
     pub fn new_with_options(
-        simple_api: Arc<Mutex<dyn BaseAPI<Client, Req, Res, Header, B>>>,
+        simple_api: Arc<Mutex<dyn BaseAPI<Client, Req, Res, Method, Header, B>>>,
     ) -> Self {
         Self { simple_api }
     }
@@ -263,7 +286,7 @@ impl Default
     }
 }
 
-impl<C, B> dyn BaseService<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+impl<C, B> dyn BaseService<Client<C, B>, Request<B>, Result<Response<B>>, Method, HeaderMap, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
@@ -344,17 +367,19 @@ where
 {
     pub fn as_base_service_shared(
         &self,
-    ) -> Arc<dyn BaseService<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>> {
+    ) -> Arc<dyn BaseService<Client<C, B>, Request<B>, Result<Response<B>>, Method, HeaderMap, B>>
+    {
         Arc::new(*self.new_copy())
     }
     pub fn as_base_service_setter(
         &self,
-    ) -> Box<dyn BaseService<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>> {
+    ) -> Box<dyn BaseService<Client<C, B>, Request<B>, Result<Response<B>>, Method, HeaderMap, B>>
+    {
         self.new_copy()
     }
 }
 
-impl<C, B> BaseService<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+impl<C, B> BaseService<Client<C, B>, Request<B>, Result<Response<B>>, Method, HeaderMap, B>
     for CommonAPI<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
@@ -376,7 +401,8 @@ where
 
     fn get_simple_api(
         &self,
-    ) -> &Arc<Mutex<dyn BaseAPI<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>>> {
+    ) -> &Arc<Mutex<dyn BaseAPI<Client<C, B>, Request<B>, Result<Response<B>>, Method, HeaderMap, B>>>
+    {
         &self.simple_api
     }
 
@@ -421,7 +447,7 @@ where
     }
 }
 
-impl<C, B> dyn BaseAPI<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+impl<C, B> dyn BaseAPI<Client<C, B>, Request<B>, Result<Response<B>>, Method, HeaderMap, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
@@ -542,7 +568,7 @@ pub async fn body_to_multipart(
     Ok(Multipart::new(body, boundary))
 }
 
-impl<C, B> SimpleHTTP<Client<C, B>, Request<B>, Result<Response<B>>, HeaderMap, B>
+impl<C, B> SimpleHTTP<Client<C, B>, Request<B>, Result<Response<B>>, Method, HeaderMap, B>
 where
     C: Connect + Clone + Send + Sync + 'static,
     B: HttpBody + Send + 'static,
