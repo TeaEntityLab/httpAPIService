@@ -14,17 +14,23 @@ use http::method::Method;
 // use futures::TryStreamExt;
 // use hyper::body::HttpBody;
 use bytes::Bytes;
+use futures::executor::ThreadPool;
+use futures::prelude::*;
+use futures::task::SpawnExt;
 use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
-use hyper::{Body, Client, Error, HeaderMap, Request, Response, Result, Uri};
+use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
 use url::Url;
 
-use super::common::{PathParam, QueryParam};
-use super::simple_api::{BaseAPI, BaseService, BodySerializer, SimpleAPI};
+use super::common::{make_stream, PathParam, QueryParam, WriteForStream};
+use super::simple_api::{
+    APIMultipart, BaseAPI, BaseService, BodyDeserializer, BodySerializer, SimpleAPI,
+};
 use super::simple_http::{
     BaseClient, FormDataParseError, SimpleHTTP, SimpleHTTPResponse, DEFAULT_TIMEOUT_MILLISECOND,
 };
+use fp_rust::common::shared_thread_pool;
 
 #[cfg(feature = "for_serde")]
 pub use super::simple_api::DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES;
@@ -42,7 +48,53 @@ use multer;
 #[cfg(feature = "multipart")]
 use multer::Multipart;
 
-pub struct HyperClient<C, B>(Client<C, B>);
+#[cfg(feature = "multipart")]
+#[derive(Debug, Clone)]
+/// MultipartSerializerForStream Serialize the multipart body (for put/post/patch etc)
+pub struct MultipartSerializerForStream {
+    // NOTE: It can't be Copy because of this one:
+    thread_pool: Option<Arc<ThreadPool>>,
+}
+#[cfg(feature = "multipart")]
+impl<B> BodySerializer<FormData, (String, B)> for MultipartSerializerForStream
+where
+    B: HttpBody + Send + 'static,
+    B: From<Body>,
+    B::Data: Send,
+    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    fn encode(&self, origin: FormData) -> StdResult<(String, B), Box<dyn StdError>> {
+        // let mut data = Vec::<u8>::new();
+
+        let (tx, rx) = make_stream::<Vec<u8>>();
+        let mut data = WriteForStream::<Vec<u8>>(tx);
+
+        let boundary = formdata::generate_boundary();
+        let boundary_thread = boundary.clone();
+        let _ = match &self.thread_pool {
+            Some(thread_pool) => thread_pool.spawn_with_handle(async move {
+                formdata::write_formdata(&mut data, &boundary_thread, &origin)
+            }),
+            None => { shared_thread_pool().inner.lock().unwrap() }.spawn_with_handle(async move {
+                formdata::write_formdata(&mut data, &boundary_thread, &origin)
+            }),
+        };
+
+        let content_type = get_content_type_from_multipart_boundary(boundary)?;
+
+        let body = rx.map(|y| Ok::<Bytes, Box<dyn StdError + Send + Sync>>(Bytes::from(y)));
+
+        Ok((content_type, B::from(Body::wrap_stream(Box::new(body)))))
+    }
+}
+#[cfg(feature = "multipart")]
+pub const DEFAULT_MULTIPART_SERIALIZER_FOR_STREAM: MultipartSerializerForStream =
+    MultipartSerializerForStream { thread_pool: None };
+
+pub struct HyperClient<C, B> {
+    pub client: Client<C, B>,
+    pub thread_pool: Option<ThreadPool>,
+}
 impl<C, B> BaseClient<Client<C, B>, Request<B>, Result<Response<Body>>, Method, HeaderMap, B>
     for HyperClient<C, B>
 where
@@ -52,10 +104,10 @@ where
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
     fn request(&self, req: Request<B>) -> Pin<Box<dyn Future<Output = Result<Response<Body>>>>> {
-        Box::pin(self.0.request(req))
+        Box::pin(self.client.request(req))
     }
     fn get_client(&mut self) -> &mut Client<C, B> {
-        return &mut self.0;
+        return &mut self.client;
     }
 }
 
@@ -110,9 +162,10 @@ impl
         Body,
     > {
         return SimpleHTTP::new_with_options(
-            Arc::new(Mutex::new(
-                HyperClient::<HttpConnector, Body>(Client::new()),
-            )),
+            Arc::new(Mutex::new(HyperClient::<HttpConnector, Body> {
+                client: Client::new(),
+                thread_pool: None,
+            })),
             VecDeque::new(),
             DEFAULT_TIMEOUT_MILLISECOND,
         );
@@ -202,15 +255,15 @@ impl Default
     }
 }
 
-#[derive(Debug)]
-pub struct HyperError(Error);
-impl StdError for HyperError {}
-
-impl std::fmt::Display for HyperError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
+// #[derive(Debug)]
+// pub struct HyperError(Error);
+// impl StdError for HyperError {}
+//
+// impl std::fmt::Display for HyperError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+//         self.0.fmt(f)
+//     }
+// }
 
 /*
 `CommonAPI` implements `make_api_response_only()`/`make_api_no_body()`/`make_api_has_body()`,
@@ -327,6 +380,7 @@ where
         .await
     }
 
+    /*
     pub async fn do_request_multipart(
         &self,
         method: Method,
@@ -341,6 +395,85 @@ where
         B: From<Bytes>,
     {
         let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER.encode(body)?;
+        self._call_common(
+            method,
+            header,
+            relative_url.into(),
+            content_type,
+            if let Some(v) = path_param {
+                Some(v.into())
+            } else {
+                None
+            },
+            if let Some(v) = query_param {
+                Some(v.into())
+            } else {
+                None
+            },
+            body,
+        )
+        .await
+    }
+    // */
+}
+
+impl<C>
+    dyn BaseService<Client<C, Body>, Request<Body>, Result<Response<Body>>, Method, HeaderMap, Body>
+{
+    #[cfg(feature = "multipart")]
+    pub fn make_api_multipart_for_stream<R>(
+        &self,
+        base: Arc<
+            dyn BaseService<
+                Client<C, Body>,
+                Request<Body>,
+                Result<Response<Body>>,
+                Method,
+                HeaderMap,
+                Body,
+            >,
+        >,
+        method: Method,
+        relative_url: impl Into<String>,
+        // request_serializer: Arc<dyn BodySerializer<FormData, (String, Body)>>,
+        response_deserializer: Arc<dyn BodyDeserializer<R>>,
+        _return_type: &R,
+    ) -> APIMultipart<
+        FormData,
+        R,
+        Client<C, Body>,
+        Request<Body>,
+        Result<Response<Body>>,
+        Method,
+        HeaderMap,
+        Body,
+    >
+    where
+        Body: From<Bytes>,
+    {
+        APIMultipart {
+            base,
+            method,
+            relative_url: relative_url.into(),
+            request_serializer: Arc::new(DEFAULT_MULTIPART_SERIALIZER_FOR_STREAM.clone()),
+            response_deserializer,
+        }
+    }
+
+    pub async fn do_request_multipart(
+        &self,
+        method: Method,
+        header: Option<HeaderMap>,
+        relative_url: impl Into<String>,
+        // content_type: impl Into<String>,
+        path_param: Option<impl Into<PathParam>>,
+        query_param: Option<impl Into<QueryParam>>,
+        body: FormData,
+    ) -> StdResult<Box<Body>, Box<dyn StdError>>
+    where
+        Body: From<Bytes>,
+    {
+        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER_FOR_STREAM.encode(body)?;
         self._call_common(
             method,
             header,

@@ -1,6 +1,7 @@
 // Crates
 
 extern crate bytes;
+extern crate fp_rust;
 extern crate futures;
 extern crate http;
 extern crate url;

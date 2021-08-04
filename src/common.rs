@@ -1,6 +1,10 @@
 use std::collections::HashMap;
+use std::io;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use futures::executor::block_on;
+use futures::{channel::mpsc, SinkExt, Stream};
 
 /*
 `PathParam` Path params for API usages
@@ -34,6 +38,32 @@ macro_rules! hash_map_string {
          $( map.insert($key.into(), $val.into()); )*
          map
     }}
+}
+
+/*
+Credit: https://stackoverflow.com/users/155423/shepmaster
+From: https://stackoverflow.com/questions/56435409/how-do-i-stream-a-hyper-requests-body-from-a-slow-processing-side-thread-that-p
+*/
+pub struct WriteForStream<T>(pub mpsc::Sender<T>);
+
+impl<T> io::Write for WriteForStream<T>
+where
+    T: for<'a> From<&'a [u8]> + Send + Sync + 'static,
+{
+    fn write(&mut self, d: &[u8]) -> io::Result<usize> {
+        let len = d.len();
+        block_on(self.0.send(d.into()))
+            .map(|()| len)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        block_on(self.0.flush()).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    }
+}
+
+pub fn make_stream<T>() -> (mpsc::Sender<T>, impl Stream<Item = T>) {
+    mpsc::channel(10)
 }
 
 pub fn generate_id() -> String {

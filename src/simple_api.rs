@@ -11,17 +11,17 @@ use std::sync::{Arc, Mutex};
 use bytes::Bytes;
 use url::Url;
 
-#[cfg(feature = "multipart")]
-use formdata::FormData;
-
-#[cfg(feature = "for_serde")]
-use serde::{de::DeserializeOwned, Serialize};
-
 pub use super::common::{PathParam, QueryParam};
 use super::simple_http::{
     data_and_boundary_from_multipart, get_content_type_from_multipart_boundary, BaseClient,
     Interceptor, InterceptorFunc, SimpleHTTP,
 };
+
+#[cfg(feature = "multipart")]
+use formdata::FormData;
+
+#[cfg(feature = "for_serde")]
+use serde::{de::DeserializeOwned, Serialize};
 
 /*
 `BodySerializer  Serialize the body (for put/post/patch etc)
@@ -44,7 +44,7 @@ impl BodySerializer<Bytes, Bytes> for DummyBypassSerializerForBytes {
         Ok(Bytes::from(origin))
     }
 }
-pub static DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES: DummyBypassSerializerForBytes =
+pub const DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES: DummyBypassSerializerForBytes =
     DummyBypassSerializerForBytes {};
 
 #[derive(Debug, Clone, Copy)]
@@ -58,7 +58,7 @@ where
         Ok(B::from(origin))
     }
 }
-pub static DEFAULT_DUMMY_BYPASS_SERIALIZER: DummyBypassSerializer = DummyBypassSerializer {};
+pub const DEFAULT_DUMMY_BYPASS_SERIALIZER: DummyBypassSerializer = DummyBypassSerializer {};
 
 #[derive(Debug, Clone, Copy)]
 /*
@@ -70,7 +70,7 @@ impl BodyDeserializer<Bytes> for DummyBypassDeserializer {
         Ok(Box::new(bytes.clone()))
     }
 }
-pub static DEFAULT_DUMMY_BYPASS_DESERIALIZER: DummyBypassDeserializer = DummyBypassDeserializer {};
+pub const DEFAULT_DUMMY_BYPASS_DESERIALIZER: DummyBypassDeserializer = DummyBypassDeserializer {};
 
 #[cfg(feature = "multipart")]
 #[derive(Debug, Clone, Copy)]
@@ -86,7 +86,7 @@ impl BodySerializer<FormData, (String, Bytes)> for MultipartSerializerForBytes {
     }
 }
 #[cfg(feature = "multipart")]
-pub static DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES: MultipartSerializerForBytes =
+pub const DEFAULT_MULTIPART_SERIALIZER_FOR_BYTES: MultipartSerializerForBytes =
     MultipartSerializerForBytes {};
 
 #[cfg(feature = "multipart")]
@@ -105,7 +105,7 @@ where
     }
 }
 #[cfg(feature = "multipart")]
-pub static DEFAULT_MULTIPART_SERIALIZER: MultipartSerializer = MultipartSerializer {};
+pub const DEFAULT_MULTIPART_SERIALIZER: MultipartSerializer = MultipartSerializer {};
 
 #[cfg(feature = "for_serde")]
 #[derive(Debug, Clone, Copy)]
@@ -125,7 +125,7 @@ impl<T: Serialize> BodySerializer<T, Bytes> for SerdeJsonSerializerForBytes {
     }
 }
 #[cfg(feature = "for_serde")]
-pub static DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES: SerdeJsonSerializerForBytes =
+pub const DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES: SerdeJsonSerializerForBytes =
     SerdeJsonSerializerForBytes {};
 
 #[cfg(feature = "for_serde")]
@@ -140,7 +140,7 @@ where
     }
 }
 #[cfg(feature = "for_serde")]
-pub static DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSerializer {};
+pub const DEFAULT_SERDE_JSON_SERIALIZER: SerdeJsonSerializer = SerdeJsonSerializer {};
 
 #[cfg(feature = "for_serde")]
 #[derive(Debug, Clone, Copy)]
@@ -155,7 +155,7 @@ impl<R: DeserializeOwned + 'static> BodyDeserializer<R> for SerdeJsonDeserialize
     }
 }
 #[cfg(feature = "for_serde")]
-pub static DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
+pub const DEFAULT_SERDE_JSON_DESERIALIZER: SerdeJsonDeserializer = SerdeJsonDeserializer {};
 
 pub trait BaseAPI<Client, Req, Res, Method, Header, B> {
     fn set_base_url(&mut self, url: Url);
