@@ -14,7 +14,7 @@ pub type QueryParam = HashMap<String, String>;
 #[macro_export]
 macro_rules! path_param {
     ($( $key: expr => $val: expr ),*) => {{
-         hyper_api_service::hash_map_string!(
+         http_api_service::hash_map_string!(
              $( $key => $val )*
          )
     }}
@@ -22,7 +22,7 @@ macro_rules! path_param {
 #[macro_export]
 macro_rules! query_param {
     ($( $key: expr => $val: expr ),*) => {{
-         hyper_api_service::hash_map_string!(
+         http_api_service::hash_map_string!(
              $( $key => $val )*
          )
     }}
@@ -30,7 +30,7 @@ macro_rules! query_param {
 #[macro_export]
 macro_rules! hash_map_string {
     ($( $key: expr => $val: expr ),*) => {{
-         let mut map = hyper_api_service::simple_api::PathParam::new();
+         let mut map = http_api_service::simple_api::PathParam::new();
          $( map.insert($key.into(), $val.into()); )*
          map
     }}

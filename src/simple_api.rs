@@ -201,7 +201,10 @@ impl<Client, Req, Res, Method, Header, B> dyn BaseService<Client, Req, Res, Meth
     pub fn get_default_header(&self) -> Option<Header> {
         self.get_simple_api().lock().unwrap().get_default_header()
     }
-    pub fn set_client(&self, client: Arc<dyn BaseClient<Client, Req, Res, Method, Header, B>>) {
+    pub fn set_client(
+        &self,
+        client: Arc<Mutex<dyn BaseClient<Client, Req, Res, Method, Header, B>>>,
+    ) {
         self.get_simple_api()
             .lock()
             .unwrap()

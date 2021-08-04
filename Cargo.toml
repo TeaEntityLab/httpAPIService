@@ -1,5 +1,5 @@
 [package]
-name = "hyper_api_service"
+name = "http_api_service"
 version = "0.2.2"
 license = "MIT"
 authors = ["JunYi JohnTeee Lee <johnteee@gmail.com>"]
@@ -7,16 +7,16 @@ edition = "2018"
 include = ["src/**/*.rs", "Cargo.toml"]
 readme = "README.md"
 description = "A Retrofit inspired implementation for Rust."
-documentation = "https://docs.rs/hyper_api_service/"
-homepage = "https://github.com/TeaEntityLab/hyperAPIService"
-repository = "https://github.com/TeaEntityLab/hyperAPIService"
+documentation = "https://docs.rs/http_api_service/"
+homepage = "https://github.com/TeaEntityLab/httpAPIService"
+repository = "https://github.com/TeaEntityLab/httpAPIService"
 keywords = ["retrofit","http","api","binding","hyper"]
 
 [badges.maintenance]
 status = "actively-developed"
 
 [lib]
-name = "hyper_api_service"
+name = "http_api_service"
 path = "src/lib.rs"
 
 [features]
@@ -25,6 +25,7 @@ default = [
 ]
 pure = []
 for_hyper = [ "hyper", "tokio", "http" ]
+for_ureq = [ "ureq", "fp_rust/for_futures" ]
 multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
 
@@ -36,13 +37,16 @@ test_runtime = [
 
 # Required
 bytes = "^1.0.0"
-futures="^0.3.0"
 url="^2.2.0"
+futures = { version = "0.3", default-features = false, features = ["thread-pool"] }
 
 # for_hyper
 hyper = { version = "^0.14.0", optional = true, features = ["client", "http1", "http2", "stream", "tcp",] }
 tokio = { version = "^1.8.0", optional = true, features = ["time", "macros",] }
 http = { version = "^0.2.4", optional = true }
+
+# for_ureq
+ureq = { version = "^2.1.0", optional = true, features = ["tls",] }
 
 # multipart
 formdata = { version = "^0.13.0", optional = true }
@@ -55,6 +59,16 @@ serde_json = { version = "^1.0", optional = true }
 
 # test_runtime
 fp_rust={ version = "^0.2.4", features = ["for_futures"], optional = true }
+
+[[test]]
+name = "ureq_simple_http"
+path = "tests/ureq_simple_http.rs"
+required-features = ["test_runtime"]
+
+[[test]]
+name = "ureq_simple_api"
+path = "tests/ureq_simple_http.rs"
+required-features = ["test_runtime"]
 
 [[test]]
 name = "hyper_simple_http"

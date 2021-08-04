@@ -9,7 +9,6 @@ use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use http::method::Method;
 // use futures::TryStreamExt;
@@ -54,6 +53,9 @@ where
 {
     fn request(&self, req: Request<B>) -> Pin<Box<dyn Future<Output = Result<Response<Body>>>>> {
         Box::pin(self.0.request(req))
+    }
+    fn get_client(&mut self) -> &mut Client<C, B> {
+        return &mut self.0;
     }
 }
 
@@ -108,7 +110,9 @@ impl
         Body,
     > {
         return SimpleHTTP::new_with_options(
-            Arc::new(HyperClient::<HttpConnector, Body>(Client::new())),
+            Arc::new(Mutex::new(
+                HyperClient::<HttpConnector, Body>(Client::new()),
+            )),
             VecDeque::new(),
             DEFAULT_TIMEOUT_MILLISECOND,
         );
@@ -585,12 +589,8 @@ where
 
         // Implement timeout
         match tokio::time::timeout(
-            Duration::from_millis(if self.timeout_millisecond > 0 {
-                self.timeout_millisecond
-            } else {
-                DEFAULT_TIMEOUT_MILLISECOND
-            }),
-            self.client.request(request),
+            self.get_timeout_duration(),
+            { self.client.lock().unwrap() }.request(request),
         )
         .await
         {

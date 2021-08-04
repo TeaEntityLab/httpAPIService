@@ -3,7 +3,7 @@ extern crate futures;
 extern crate http_api_service;
 
 /*
-#[cfg(feature = "default")]
+#[cfg(feature = "test_runtime")]
 #[tokio::test]
 async fn test_simple_api_for_readme_md() {
     extern crate hyper;
@@ -13,7 +13,7 @@ async fn test_simple_api_for_readme_md() {
     use http::method::Method;
     use hyper::HeaderMap;
 
-    use http_api_service::bind_hyper;
+    use http_api_service::bind_ureq;
     use http_api_service::path_param;
     use http_api_service::simple_api;
     use http_api_service::simple_api::{
@@ -39,7 +39,7 @@ async fn test_simple_api_for_readme_md() {
     let json_deserializer = Arc::new(DEFAULT_SERDE_JSON_DESERIALIZER);
     let return_type_marker = &Product::default();
 
-    let common_api = bind_hyper::CommonAPI::new_for_hyper();
+    let common_api = bind_ureq::CommonAPI::new_for_hyper();
     let mut base_service_setter = common_api.as_base_service_setter();
     let base_service_shared = common_api.as_base_service_shared();
 
@@ -53,7 +53,7 @@ async fn test_simple_api_for_readme_md() {
         Some(header) => header,
         None => HeaderMap::new(),
     };
-    header_map = bind_hyper::add_header_authentication_bearer(header_map, "MY_TOKEN")
+    header_map = bind_ureq::add_header_authentication_bearer(header_map, "MY_TOKEN")
         .ok()
         .unwrap();
     base_service_setter.set_default_header(Some(header_map));
@@ -131,7 +131,7 @@ async fn test_simple_api_for_readme_md() {
     let model = resp.ok().unwrap();
 }
 // */
-#[cfg(feature = "default")]
+#[cfg(feature = "test_runtime")]
 #[tokio::test]
 async fn test_simple_api_common() {
     extern crate fp_rust;
@@ -146,8 +146,8 @@ async fn test_simple_api_common() {
     use serde::{Deserialize, Serialize};
 
     use fp_rust::sync::CountDownLatch;
-    use http_api_service::bind_hyper;
-    use http_api_service::bind_hyper::add_header_authentication_bearer;
+    use http_api_service::bind_ureq;
+    use http_api_service::bind_ureq::add_header_authentication_bearer;
     use http_api_service::simple_api;
     use http_api_service::simple_api::{
         DEFAULT_SERDE_JSON_DESERIALIZER, DEFAULT_SERDE_JSON_SERIALIZER,
@@ -254,7 +254,7 @@ async fn test_simple_api_common() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let common_api = bind_hyper::CommonAPI::new_for_hyper();
+    let common_api = bind_ureq::CommonAPI::new_for_hyper();
     let mut base_service_setter = common_api.as_base_service_setter();
     let base_service_shared = common_api.as_base_service_shared();
     base_service_setter.set_base_url(
@@ -376,7 +376,7 @@ async fn test_simple_api_common() {
     println!("OK");
 }
 
-#[cfg(feature = "default")]
+#[cfg(feature = "test_runtime")]
 #[tokio::test]
 async fn test_simple_api_formdata() {
     extern crate formdata;
@@ -392,8 +392,8 @@ async fn test_simple_api_formdata() {
     use hyper::{Body, Method, Request, Response, Server};
 
     use fp_rust::sync::CountDownLatch;
-    use http_api_service::bind_hyper;
-    use http_api_service::bind_hyper::body_to_multipart;
+    use http_api_service::bind_ureq;
+    use http_api_service::bind_ureq::body_to_multipart;
     use http_api_service::simple_api;
     use http_api_service::simple_http;
 
@@ -485,7 +485,7 @@ async fn test_simple_api_formdata() {
         files: vec![],
     };
 
-    let common_api = bind_hyper::CommonAPI::new_for_hyper();
+    let common_api = bind_ureq::CommonAPI::new_for_hyper();
     let base_service_setter = common_api.as_base_service_setter();
     let base_service_shared = common_api.as_base_service_shared();
 

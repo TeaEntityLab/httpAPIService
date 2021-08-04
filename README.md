@@ -1,13 +1,13 @@
-# hyperAPIService
+# httpAPIService
 
-[![tag](https://img.shields.io/github/tag/TeaEntityLab/hyperAPIService.svg)](https://github.com/TeaEntityLab/hyperAPIService)
-[![Crates.io](https://img.shields.io/crates/d/hyper_api_service.svg)](https://crates.io/crates/hyper_api_service)
-[![Travis CI Build Status](https://api.travis-ci.org/TeaEntityLab/hyperAPIService.svg?branch=master)](https://travis-ci.org/TeaEntityLab/hyperAPIService)
-[![docs](https://img.shields.io/badge/docs-online-5023dd.svg)](https://docs.rs/hyper_api_service/)
+[![tag](https://img.shields.io/github/tag/TeaEntityLab/httpAPIService.svg)](https://github.com/TeaEntityLab/httpAPIService)
+[![Crates.io](https://img.shields.io/crates/d/http_api_service.svg)](https://crates.io/crates/http_api_service)
+[![Travis CI Build Status](https://api.travis-ci.org/TeaEntityLab/httpAPIService.svg?branch=master)](https://travis-ci.org/TeaEntityLab/httpAPIService)
+[![docs](https://img.shields.io/badge/docs-online-5023dd.svg)](https://docs.rs/http_api_service/)
 
-[![license](https://img.shields.io/github/license/TeaEntityLab/hyperAPIService.svg?style=social&label=License)](https://github.com/TeaEntityLab/hyperAPIService)
-[![stars](https://img.shields.io/github/stars/TeaEntityLab/hyperAPIService.svg?style=social&label=Stars)](https://github.com/TeaEntityLab/hyperAPIService)
-[![forks](https://img.shields.io/github/forks/TeaEntityLab/hyperAPIService.svg?style=social&label=Fork)](https://github.com/TeaEntityLab/hyperAPIService)
+[![license](https://img.shields.io/github/license/TeaEntityLab/httpAPIService.svg?style=social&label=License)](https://github.com/TeaEntityLab/httpAPIService)
+[![stars](https://img.shields.io/github/stars/TeaEntityLab/httpAPIService.svg?style=social&label=Stars)](https://github.com/TeaEntityLab/httpAPIService)
+[![forks](https://img.shields.io/github/forks/TeaEntityLab/httpAPIService.svg?style=social&label=Fork)](https://github.com/TeaEntityLab/httpAPIService)
 
 
 A Retrofit inspired implementation for Rust.
@@ -18,7 +18,7 @@ I love Retrofit(for java), WebServiceAPI-style coding.
 
 However it's hard to implement them in Rust, and there're few libraries to achieve parts of them.
 
-Thus I implemented hyperAPIService. I hope you would like it :)
+Thus I implemented httpAPIService. I hope you would like it :)
 
 
 # Features
@@ -26,6 +26,7 @@ Thus I implemented hyperAPIService. I hope you would like it :)
 * Retrofit-like API for WebService Restful API
   * Engine:
     * Hyper **feature: for_hyper**
+    * Ureq **feature: for_ureq**
     * *`< To Be Continued I \ I /`* ...
   * Common:
     * Intercept the request: *`InterceptorFunc`* (struct) / *`Interceptor`* (trait)
@@ -52,7 +53,8 @@ Note:
 default = [
   "for_hyper", "multipart", "for_serde"
 ]
-for_hyper = [ "hyper", "tokio" ]
+for_hyper = [ "hyper", "tokio", "http" ]
+for_ureq = [ "ureq", "fp_rust/for_futures" ]
 multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
 pure = []
@@ -61,13 +63,16 @@ pure = []
 
 # Required
 bytes = "^1.0.0"
-http = "^0.2.4"
-futures="^0.3.0"
 url="^2.2.0"
+futures = { version = "0.3", default-features = false, features = ["thread-pool"] }
 
 # for_hyper
 hyper = { version = "^0.14.0", optional = true, features = ["client", "http1", "http2", "stream", "tcp",] }
 tokio = { version = "^1.8.0", optional = true,features = ["time", "macros",] }
+http = { version = "^0.2.4", optional = true, }
+
+# for_ureq
+ureq = { version = "^2.1.0", optional = true, features = ["tls",] }
 
 # multipart
 formdata = { version = "^0.13.0", optional = true }
@@ -92,10 +97,10 @@ use std::sync::Arc;
 use http::method::Method;
 use hyper::HeaderMap;
 
-use hyper_api_service::bind_hyper;
-use hyper_api_service::path_param;
-use hyper_api_service::simple_api;
-use hyper_api_service::simple_api::{
+use http_api_service::bind_hyper;
+use http_api_service::path_param;
+use http_api_service::simple_api;
+use http_api_service::simple_api::{
     DEFAULT_SERDE_JSON_DESERIALIZER, DEFAULT_SERDE_JSON_SERIALIZER,
 };
 

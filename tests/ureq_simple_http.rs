@@ -11,6 +11,7 @@ fn connect(addr: &SocketAddr) -> std::io::Result<TcpStream> {
 }
 */
 
+#[cfg(feature = "test_runtime")]
 #[tokio::test]
 async fn test_get_header() {
     extern crate hyper;
@@ -118,7 +119,8 @@ async fn test_get_header() {
     println!("OK");
 }
 
-#[cfg(feature = "multipart")]
+/*
+#[cfg(feature = "test_runtime")]
 #[tokio::test]
 async fn test_formdata() {
     extern crate fp_rust;
@@ -135,8 +137,8 @@ async fn test_formdata() {
     use hyper::{body, Body, Method, Request, Response, Server};
 
     use fp_rust::sync::CountDownLatch;
-    use http_api_service::bind_hyper::get_content_type_from_multipart_boundary;
-    use http_api_service::bind_hyper::{body_from_multipart, body_to_multipart};
+    use http_api_service::bind_ureq::get_content_type_from_multipart_boundary;
+    use http_api_service::bind_ureq::{body_from_multipart, body_to_multipart};
     use http_api_service::simple_http;
     use http_api_service::simple_http::SimpleHTTP;
 
@@ -275,3 +277,4 @@ async fn test_formdata() {
 
     println!("OK");
 }
+*/

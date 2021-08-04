@@ -30,3 +30,6 @@ pub mod simple_http;
 
 #[cfg(feature = "for_hyper")]
 pub mod bind_hyper;
+
+#[cfg(feature = "for_ureq")]
+pub mod bind_ureq;
