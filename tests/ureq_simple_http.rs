@@ -15,13 +15,15 @@ fn connect(addr: &SocketAddr) -> std::io::Result<TcpStream> {
 #[tokio::test]
 async fn test_get_header() {
     extern crate hyper;
+    extern crate ureq;
 
     extern crate fp_rust;
     use std::net::SocketAddr;
 
     use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
-    use hyper::{body, Body, Method, Request, Response, Server};
+    use hyper::{body, Body, Request, Response, Server};
+    use ureq::Agent;
 
     use fp_rust::sync::CountDownLatch;
     use http_api_service::simple_http::SimpleHTTP;
@@ -89,27 +91,29 @@ async fn test_get_header() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let simple_http = SimpleHTTP::new_for_hyper();
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri("http://".to_string() + &addr.to_string())
-        .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(r#"{"library":"hyper"}"#))
-        .ok()
-        .unwrap();
+    let simple_http = SimpleHTTP::new_for_ureq();
+    let agent = Agent::new();
+    let mut request = agent.request("POST", &("http://".to_string() + &addr.to_string()));
+    request = request.set(&CONTENT_TYPE.to_string(), "application/json");
 
     println!("{:?}", request);
-    let resp = simple_http.request(request).await.ok().unwrap();
+    let resp = simple_http
+        .request((request, Some(bytes::Bytes::from(r#"{"library":"hyper"}"#))))
+        .await
+        .ok()
+        .unwrap();
     let err = resp.as_ref().err();
     println!("{:?}", err);
     assert_eq!(false, resp.is_err());
 
-    let mut body_instance = resp.ok().unwrap();
-    let body_instance = body_instance.body_mut();
-    let bytes = body::to_bytes(body_instance).await.ok().unwrap();
-    let body_str = String::from_utf8(bytes.to_vec()).expect("response was not valid utf-8");
+    // let mut body_instance = resp.ok().unwrap();
+    // let body_instance = body_instance.body_mut();
+    // let bytes = body::to_bytes(body_instance).await.ok().unwrap();
+    // let body_str = String::from_utf8(bytes.to_vec()).expect("response was not valid utf-8");
+    let resp = resp.ok().unwrap();
+    let body_str = resp.into_string().ok().unwrap();
 
-    assert_eq!("{\"library\":\"hyper\"}Parts { method: POST, uri: /, version: HTTP/1.1, headers: {\"content-type\": \"application/json\", \"host\": \"127.0.0.1:3000\", \"content-length\": \"19\"} }", body_str);
+    assert_eq!("{\"library\":\"hyper\"}Parts { method: POST, uri: /, version: HTTP/1.1, headers: {\"host\": \"127.0.0.1:3000\", \"user-agent\": \"ureq/2.1.1\", \"accept\": \"*/*\", \"content-type\": \"application/json\", \"content-length\": \"19\"} }", body_str);
 
     started_latch.wait();
     println!("REQ",);
@@ -119,7 +123,6 @@ async fn test_get_header() {
     println!("OK");
 }
 
-/*
 #[cfg(feature = "test_runtime")]
 #[tokio::test]
 async fn test_formdata() {
@@ -134,11 +137,14 @@ async fn test_formdata() {
     use futures::executor::block_on;
     use hyper::header::CONTENT_TYPE;
     use hyper::service::{make_service_fn, service_fn};
-    use hyper::{body, Body, Method, Request, Response, Server};
+    use hyper::{Body, Request, Response, Server};
+    use ureq::{Agent, Header};
 
     use fp_rust::sync::CountDownLatch;
-    use http_api_service::bind_ureq::get_content_type_from_multipart_boundary;
-    use http_api_service::bind_ureq::{body_from_multipart, body_to_multipart};
+    use http_api_service::bind_ureq::body_from_multipart;
+    use http_api_service::bind_ureq::{
+        body_to_multipart, get_content_type_from_multipart_boundary,
+    };
     use http_api_service::simple_http;
     use http_api_service::simple_http::SimpleHTTP;
 
@@ -167,8 +173,20 @@ async fn test_formdata() {
                     //     String::from_utf8(bytes.to_vec()).expect("response was not valid utf-8");
 
                     let (parts, body) = req.into_parts();
+                    let body = hyper::body::to_bytes(body).await?;
 
-                    let multipart = body_to_multipart(&parts.headers, body).await;
+                    let headers = match parts.headers.get(CONTENT_TYPE) {
+                        Some(content_type) => {
+                            vec![Header::new(
+                                CONTENT_TYPE.as_str(),
+                                &content_type.to_str().ok().unwrap(),
+                            )]
+                        }
+                        None => {
+                            vec![]
+                        }
+                    };
+                    let multipart = body_to_multipart(&headers, body).await;
 
                     println!("Error: {:?}", multipart.as_ref().err());
 
@@ -222,7 +240,6 @@ async fn test_formdata() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let simple_http = SimpleHTTP::new_for_hyper();
     let form_data_origin = FormData {
         fields: vec![
             ("name".to_owned(), "Baxter".to_owned()),
@@ -237,31 +254,33 @@ async fn test_formdata() {
         String::from_utf8(boundary.clone()).ok().unwrap()
     );
 
-    let request = Request::builder()
-        .method(Method::POST)
-        .uri("http://".to_string() + &addr.to_string())
-        .header(
-            CONTENT_TYPE,
-            // "multipart/form-data; boundary=".to_string()
-            get_content_type_from_multipart_boundary(boundary)
-                .ok()
-                .unwrap(),
-        )
-        .body(body)
-        .ok()
-        .unwrap();
+    let simple_http = SimpleHTTP::new_for_ureq();
+    let agent = Agent::new();
+    let mut request = agent.request("POST", &("http://".to_string() + &addr.to_string()));
+    request = request.set(
+        &CONTENT_TYPE.to_string(),
+        &get_content_type_from_multipart_boundary(boundary)
+            .ok()
+            .unwrap(),
+    );
 
     println!("{:?}", request);
-    let resp = simple_http.request(request).await.ok().unwrap();
+    let resp = simple_http
+        .request((request, Some(body)))
+        .await
+        .ok()
+        .unwrap();
     let err = resp.as_ref().err();
     println!("{:?}", err);
     assert_eq!(false, resp.is_err());
 
     let resp = resp.ok().unwrap();
 
-    let body_instance = resp.into_body();
-    let bytes = body::to_bytes(body_instance).await.ok().unwrap();
-    let body_str = String::from_utf8(bytes.to_vec()).expect("response was not valid utf-8");
+    // let body_instance = resp.into_body();
+    // let bytes = body::to_bytes(body_instance).await.ok().unwrap();
+    // let body_str = String::from_utf8(bytes.to_vec()).expect("response was not valid utf-8");
+
+    let body_str = resp.into_string().ok().unwrap();
 
     println!("body_str: {:?}", body_str);
 
@@ -277,4 +296,3 @@ async fn test_formdata() {
 
     println!("OK");
 }
-*/

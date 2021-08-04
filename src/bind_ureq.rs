@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex};
 // use futures::TryStreamExt;
 use bytes::Bytes;
 use futures::executor::ThreadPool;
+use futures::prelude::*;
+use futures::stream;
 use futures::task::SpawnExt;
 use ureq::{Agent, Header, Request, Response};
 use url::Url;
@@ -33,10 +35,10 @@ pub use super::simple_http::{
 };
 #[cfg(feature = "multipart")]
 use formdata::FormData;
-// #[cfg(feature = "multipart")]
-// use multer;
-// #[cfg(feature = "multipart")]
-// use multer::Multipart;
+#[cfg(feature = "multipart")]
+use multer;
+#[cfg(feature = "multipart")]
+use multer::Multipart;
 
 pub const CONTENT_TYPE: &'static str = "content-type";
 
@@ -625,26 +627,29 @@ pub fn body_from_multipart(form_data: &FormData) -> StdResult<(Bytes, Vec<u8>), 
 
     Ok((Bytes::from(data), boundary))
 }
-// #[cfg(feature = "multipart")]
-// pub async fn body_to_multipart(
-//     headers: &Vec<Header>,
-//     body: Bytes,
-// ) -> StdResult<Multipart<'_>, Box<dyn StdError>> {
-//     let boundary: String;
-//
-//     for item in headers.into_iter() {
-//         if item.name() == CONTENT_TYPE {
-//             if let Some(content_type) = item.value() {
-//                 boundary = multer::parse_boundary(&content_type)?;
-//                 return Ok(Multipart::new(body, boundary));
-//             }
-//         }
-//     }
-//
-//     Err(Box::new(FormDataParseError::new(
-//         "{}: None".to_string() + CONTENT_TYPE,
-//     )))
-// }
+#[cfg(feature = "multipart")]
+pub async fn body_to_multipart(
+    headers: &Vec<Header>,
+    body: Bytes,
+) -> StdResult<Multipart<'_>, Box<dyn StdError>> {
+    let boundary: String;
+
+    let body = stream::iter(vec![body])
+        .map(|y| -> StdResult<Bytes, Box<dyn std::error::Error + Send + Sync>> { Ok(y) });
+
+    for item in headers.into_iter() {
+        if item.name() == CONTENT_TYPE {
+            if let Some(content_type) = item.value() {
+                boundary = multer::parse_boundary(&content_type)?;
+                return Ok(Multipart::new(body, boundary));
+            }
+        }
+    }
+
+    Err(Box::new(FormDataParseError::new(
+        "{}: None".to_string() + CONTENT_TYPE,
+    )))
+}
 
 impl
     SimpleHTTP<
