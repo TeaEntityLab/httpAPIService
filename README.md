@@ -65,7 +65,6 @@ pure = []
 bytes = "^1.0.0"
 url="^2.2.0"
 futures = { version = "0.3", default-features = false, features = ["thread-pool"] }
-fp_rust={ version = "^0.2.4", features = ["for_futures"] }
 
 # for_hyper
 hyper = { version = "^0.14.0", optional = true, features = ["client", "http1", "http2", "stream", "tcp",] }

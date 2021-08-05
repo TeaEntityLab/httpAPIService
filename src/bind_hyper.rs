@@ -5,33 +5,35 @@ In this module there're implementations & tests of `SimpleHTTP`.
 use std::collections::VecDeque;
 use std::error::Error as StdError;
 use std::future::Future;
-use std::io::Write;
+use std::io::{self, Write};
 use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 use http::method::Method;
 // use futures::TryStreamExt;
 // use hyper::body::HttpBody;
 use bytes::Bytes;
+// use futures::executor::block_on;
 use futures::executor::ThreadPool;
-use futures::prelude::*;
-use futures::task::SpawnExt;
-use hyper::body::HttpBody;
+// use futures::prelude::*;
+// use futures::task::SpawnExt;
+use hyper::body::{HttpBody, Sender};
 use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
 use url::Url;
 
-use super::common::{make_stream, PathParam, QueryParam, WriteForStream};
+use super::common::{PathParam, QueryParam};
 use super::simple_api::{
     APIMultipart, BaseAPI, BaseService, BodyDeserializer, BodySerializer, SimpleAPI,
 };
 use super::simple_http::{
     BaseClient, FormDataParseError, SimpleHTTP, SimpleHTTPResponse, DEFAULT_TIMEOUT_MILLISECOND,
 };
-use fp_rust::common::shared_thread_pool;
+// use fp_rust::common::shared_thread_pool;
 
 #[cfg(feature = "for_serde")]
 pub use super::simple_api::DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES;
@@ -48,6 +50,23 @@ use formdata::FormData;
 use multer;
 #[cfg(feature = "multipart")]
 use multer::Multipart;
+
+pub struct WriteForBody(pub Box<Sender>);
+impl io::Write for WriteForBody {
+    fn write(&mut self, d: &[u8]) -> io::Result<usize> {
+        let len = d.len();
+        if len <= 0 {
+            return Ok(len);
+        }
+        let d = Bytes::from(d.to_vec());
+        let _ = self.0.try_send_data(d);
+        Ok(len)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 #[cfg(feature = "multipart")]
 #[derive(Debug, Clone)]
@@ -67,54 +86,38 @@ where
     fn encode(&self, origin: FormData) -> StdResult<(String, B), Box<dyn StdError>> {
         // let mut data = Vec::<u8>::new();
 
-        // let (tx, rx) = make_stream::<Vec<u8>>();
-        let (tx, rx) = make_stream::<StdResult<Vec<u8>, Box<dyn StdError + Send>>>();
-        let mut data = WriteForStream::<Vec<u8>>(tx);
+        let (tx, body) = Body::channel();
+        let mut data = WriteForBody(Box::new(tx));
 
         let boundary = formdata::generate_boundary();
         let boundary_thread = boundary.clone();
-        let _ = match &self.thread_pool {
-            Some(thread_pool) => thread_pool.spawn(async move {
-                match formdata::write_formdata(&mut data, &boundary_thread, &origin) {
-                    Err(e) => println!("Error -> write_formdata {:?}", e),
-                    _ => {}
-                };
-                match data.flush() {
-                    Err(e) => println!("Error -> flush {:?}", e),
-                    _ => {}
-                };
-                match data.0.close().await {
-                    Err(e) => println!("Error -> close {:?}", e),
-                    _ => {}
-                };
-                drop(data.0);
-            }),
-            None => { shared_thread_pool().inner.lock().unwrap() }.spawn(async move {
-                match formdata::write_formdata(&mut data, &boundary_thread, &origin) {
-                    Err(e) => println!("Error -> write_formdata {:?}", e),
-                    _ => {}
-                };
-                match data.flush() {
-                    Err(e) => println!("Error -> flush {:?}", e),
-                    _ => {}
-                };
-                match data.0.close().await {
-                    Err(e) => println!("Error -> close {:?}", e),
-                    _ => {}
-                };
-                drop(data.0);
-            }),
-        };
+        //*
+        let _ = thread::spawn(move || {
+            // let _ = tokio::spawn(async move {
+            // tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            // thread::sleep_ms(2000);
+
+            match formdata::write_formdata(&mut data, &boundary_thread, &origin) {
+                Err(e) => println!("Error -> write_formdata {:?}", e),
+                _ => {}
+            };
+            match data.flush() {
+                Err(e) => println!("Error -> flush {:?}", e),
+                _ => {}
+            };
+            {
+                // data.0.abort();
+            };
+            let tx = data.0;
+            // // tx.drop();
+            drop(tx);
+            // std::mem::drop(tx);
+            // drop(data);
+        });
 
         let content_type = get_content_type_from_multipart_boundary(boundary)?;
 
-        let body = rx
-            .map(|y| Bytes::from(y.ok().unwrap()))
-            .into_future()
-            .map(|y| Ok::<Bytes, Box<dyn StdError + Send + Sync>>(y.0.unwrap()))
-            .into_stream();
-
-        Ok((content_type, B::from(Body::wrap_stream(body))))
+        Ok((content_type, B::from(body)))
     }
 }
 #[cfg(feature = "multipart")]
@@ -451,7 +454,8 @@ impl<C>
     dyn BaseService<Client<C, Body>, Request<Body>, Result<Response<Body>>, Method, HeaderMap, Body>
 {
     #[cfg(feature = "multipart")]
-    pub fn make_api_multipart_for_stream<R>(
+    // NOTE: Experimental
+    pub(crate) fn make_api_multipart_for_stream<R>(
         &self,
         base: Arc<
             dyn BaseService<

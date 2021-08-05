@@ -382,6 +382,7 @@ async fn test_simple_api_formdata() {
     extern crate formdata;
     extern crate multer;
 
+    use std::collections::HashMap;
     use std::iter::{FromIterator, IntoIterator};
     use std::net::SocketAddr;
     use std::sync::Arc;
@@ -431,7 +432,13 @@ async fn test_simple_api_formdata() {
 
                     let hash_map =
                         block_on(simple_http::multer_multipart_to_hash_map(&mut multipart));
-                    let hash_map = hash_map.ok().unwrap();
+                    let hash_map = match hash_map {
+                        Ok(v) => v,
+                        Err(e) => {
+                            println!("Error -> hash_map {:?}", e);
+                            HashMap::new()
+                        }
+                    };
 
                     let mut body_str = String::new();
                     let mut keys = Vec::from_iter(hash_map.keys().into_iter());
@@ -503,26 +510,49 @@ async fn test_simple_api_formdata() {
         Arc::new(simple_api::DEFAULT_DUMMY_BYPASS_DESERIALIZER),
         &bytes::Bytes::new(),
     );
-
     let resp = api_post_multipart
-        .call(Some(simple_api::PathParam::new()), form_data_origin)
+        .call(Some(simple_api::PathParam::new()), form_data_origin.clone())
         .await;
     let err = resp.as_ref().err();
     println!("{:?}", err);
     assert_eq!(false, resp.is_err());
-
     let resp = resp.ok().unwrap();
-
     // let body_instance = resp.into_body();
     // let bytes = body::to_bytes(body_instance).await.ok().unwrap();
     // let body_str = String::from_utf8(bytes.to_vec()).expect("response was not valid utf-8");
-
     println!("resp: {:?}", resp);
-
     assert_eq!(
         "\"age\":\"\":b\"1 month\"\n\"name\":\"\":b\"Baxter\"\n",
         String::from_utf8(resp.to_vec()).ok().unwrap().as_str()
     );
+
+    /*
+    println!("========");
+    // POST make_api_multipart_for_stream
+    let api_post_multipart_for_stream = base_service_setter.make_api_multipart_for_stream(
+        base_service_shared.clone(),
+        Method::POST,
+        "/form",
+        Arc::new(simple_api::DEFAULT_DUMMY_BYPASS_DESERIALIZER),
+        &bytes::Bytes::new(),
+    );
+    let resp = api_post_multipart_for_stream
+        .call(Some(simple_api::PathParam::new()), form_data_origin.clone())
+        .await;
+    let err = resp.as_ref().err();
+    println!("Error: api_post_multipart_for_stream {:?}", err);
+    assert_eq!(false, resp.is_err());
+    let resp = resp.ok().unwrap();
+    // tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+    // let body_instance = resp.into_body();
+    // let bytes = body::to_bytes(body_instance).await.ok().unwrap();
+    // let body_str = String::from_utf8(bytes.to_vec()).expect("response was not valid utf-8");
+    println!("resp: {:?}", resp);
+    assert_eq!(
+        "\"age\":\"\":b\"1 month\"\n\"name\":\"\":b\"Baxter\"\n",
+        String::from_utf8(resp.to_vec()).ok().unwrap().as_str()
+    );
+    */
 
     started_latch.wait();
     println!("REQ",);
