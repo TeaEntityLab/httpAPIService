@@ -551,7 +551,9 @@ impl<T, R, Client, Req, Res, Method, Header, B>
         Method: Clone,
     {
         // let mut sent_body = Box::new(sent_body);
+        println!("request_serializer encode before");
         let (content_type_with_boundary, sent_body) = self.request_serializer.encode(sent_body)?;
+        println!("request_serializer encode after");
         let body = self
             .base
             ._call_common(
@@ -573,6 +575,8 @@ impl<T, R, Client, Req, Res, Method, Header, B>
             )
             .await?;
 
+        println!("_call_common");
+
         // let mut target = Box::new(target);
         // let body = Box::new(body);
         // let bytes = hyper::body::to_bytes(*body).await?;
@@ -582,6 +586,8 @@ impl<T, R, Client, Req, Res, Method, Header, B>
         }
         let bytes = result.ok().unwrap();
         let target = self.response_deserializer.decode(&bytes)?;
+
+        println!("response_deserializer.decode after");
 
         Ok(target)
     }

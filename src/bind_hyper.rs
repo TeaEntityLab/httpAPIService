@@ -9,7 +9,11 @@ use std::io::{self, Write};
 use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
+use std::task::{Context, Poll, Waker};
 use std::thread;
 
 use http::method::Method;
@@ -18,22 +22,22 @@ use http::method::Method;
 use bytes::Bytes;
 // use futures::executor::block_on;
 use futures::executor::ThreadPool;
-// use futures::prelude::*;
+use futures::prelude::*;
+use futures::Stream;
 // use futures::task::SpawnExt;
-use hyper::body::{HttpBody, Sender};
+use hyper::body::HttpBody;
 use hyper::client::{connect::Connect, HttpConnector};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::{Body, Client, HeaderMap, Request, Response, Result, Uri};
 use url::Url;
 
-use super::common::{PathParam, QueryParam};
+use super::common::{make_stream, PathParam, QueryParam, WriteForStream};
 use super::simple_api::{
     APIMultipart, BaseAPI, BaseService, BodyDeserializer, BodySerializer, SimpleAPI,
 };
 use super::simple_http::{
     BaseClient, FormDataParseError, SimpleHTTP, SimpleHTTPResponse, DEFAULT_TIMEOUT_MILLISECOND,
 };
-// use fp_rust::common::shared_thread_pool;
 
 #[cfg(feature = "for_serde")]
 pub use super::simple_api::DEFAULT_SERDE_JSON_SERIALIZER_FOR_BYTES;
@@ -51,19 +55,99 @@ use multer;
 #[cfg(feature = "multipart")]
 use multer::Multipart;
 
-pub struct WriteForBody(pub Box<Sender>);
+#[derive(Clone)]
+pub struct WriteForBody {
+    // pub Box<Sender>
+    pub cached: Arc<Mutex<VecDeque<Bytes>>>,
+    pub waker: Arc<Mutex<Option<Waker>>>,
+    pub alive: Arc<Mutex<AtomicBool>>,
+}
+
+impl WriteForBody {
+    pub fn close(&self) {
+        self.alive.lock().unwrap().store(false, Ordering::SeqCst);
+
+        {
+            if let Some(waker) = self.waker.lock().unwrap().take() {
+                waker.wake()
+            }
+        }
+    }
+}
+
+impl Stream for WriteForBody {
+    type Item = StdResult<Bytes, Box<dyn StdError + Send + Sync>>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        {
+            {
+                let mut cached = self.cached.lock().unwrap();
+                if !cached.is_empty() {
+                    self.waker.lock().unwrap().replace(cx.waker().clone());
+
+                    let d = cached.pop_front();
+                    println!("WriteForBody stream read content: {:?}", d.clone());
+                    return Poll::Ready(Some(Ok(d.unwrap())));
+                }
+            }
+            {
+                if !self.alive.lock().unwrap().load(Ordering::SeqCst) {
+                    println!("WriteForBody stream end");
+                    return Poll::Ready(None);
+                }
+            }
+        }
+
+        {
+            self.waker.lock().unwrap().replace(cx.waker().clone());
+            println!("WriteForBody stream pending");
+            Poll::Pending
+        }
+    }
+}
+
 impl io::Write for WriteForBody {
     fn write(&mut self, d: &[u8]) -> io::Result<usize> {
         let len = d.len();
+        println!("WriteForBody write len: {:?}", len);
         if len <= 0 {
             return Ok(len);
         }
         let d = Bytes::from(d.to_vec());
-        let _ = self.0.try_send_data(d);
+        println!("WriteForBody write content: {:?}", d.clone());
+
+        {
+            let mut cached = self.cached.lock().unwrap();
+            cached.push_back(d);
+            cached.reserve_exact(10);
+        }
+        {
+            if let Some(waker) = self.waker.lock().unwrap().take() {
+                waker.wake();
+            }
+        }
+
+        /*
+        match self.0.try_send_data(d) {
+            Ok(_) => {
+                println!("WriteForBody write ok");
+            }
+            Err(_) => {
+                println!("WriteForBody write error");
+            }
+        }
+        */
         Ok(len)
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        {
+            if let Some(waker) = self.waker.lock().unwrap().take() {
+                waker.wake();
+            }
+        }
+
+        println!("flush ok");
         Ok(())
     }
 }
@@ -76,48 +160,73 @@ pub struct MultipartSerializerForStream {
     thread_pool: Option<Arc<ThreadPool>>,
 }
 #[cfg(feature = "multipart")]
-impl<B> BodySerializer<FormData, (String, B)> for MultipartSerializerForStream
+impl BodySerializer<FormData, (String, Body)> for MultipartSerializerForStream
 where
-    B: HttpBody + Send + 'static,
-    B: From<Body>,
-    B::Data: Send,
-    B::Error: Into<Box<dyn StdError + Send + Sync>>,
+// B: HttpBody + Send + 'static,
+// B: From<Body>,
+// B::Data: Send,
+// B::Error: Into<Box<dyn StdError + Send + Sync>>,
 {
-    fn encode(&self, origin: FormData) -> StdResult<(String, B), Box<dyn StdError>> {
+    fn encode(&self, origin: FormData) -> StdResult<(String, Body), Box<dyn StdError>> {
         // let mut data = Vec::<u8>::new();
 
+        let (tx, rx) = make_stream::<Bytes>();
+        let mut data = WriteForStream(tx);
+
+        /*
         let (tx, body) = Body::channel();
         let mut data = WriteForBody(Box::new(tx));
+        // */
+
+        /*
+        let mut data = WriteForBody {
+            cached: Arc::new(Mutex::new(VecDeque::with_capacity(10))),
+            waker: Arc::new(Mutex::new(None)),
+            alive: Arc::new(Mutex::new(AtomicBool::new(true))),
+        };
+        let body = data.clone();
+        */
 
         let boundary = formdata::generate_boundary();
         let boundary_thread = boundary.clone();
         //*
+        // println!("Enter encode");
         let _ = thread::spawn(move || {
+            // let _ = tokio::spawn(async move {
             // let _ = tokio::spawn(async move {
             // tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             // thread::sleep_ms(2000);
+            // data.0.send_data(Bytes::new()).await;
 
+            // println!("spawn: Some");
+            // println!("write_formdata begin");
             match formdata::write_formdata(&mut data, &boundary_thread, &origin) {
                 Err(e) => println!("Error -> write_formdata {:?}", e),
                 _ => {}
             };
+            // println!("write_formdata done");
+
             match data.flush() {
                 Err(e) => println!("Error -> flush {:?}", e),
                 _ => {}
             };
-            {
-                // data.0.abort();
-            };
-            let tx = data.0;
-            // // tx.drop();
-            drop(tx);
-            // std::mem::drop(tx);
-            // drop(data);
-        });
+            // println!("flush ok");
 
+            let mut tx = data.0;
+            tx.close_channel();
+            drop(tx);
+            // println!("Close!!");
+        });
+        // */
         let content_type = get_content_type_from_multipart_boundary(boundary)?;
 
-        Ok((content_type, B::from(body)))
+        let body = rx
+            .map(|y| Ok::<Bytes, Box<dyn StdError + Send + Sync>>(y))
+            .into_stream();
+
+        // Ok((content_type, B::from(body)))
+        // Ok((content_type, body))
+        Ok((content_type, Body::wrap_stream(body)))
     }
 }
 #[cfg(feature = "multipart")]
@@ -455,7 +564,7 @@ impl<C>
 {
     #[cfg(feature = "multipart")]
     // NOTE: Experimental
-    pub(crate) fn make_api_multipart_for_stream<R>(
+    pub fn make_api_multipart_for_stream<R>(
         &self,
         base: Arc<
             dyn BaseService<

@@ -1,14 +1,15 @@
 use std::collections::HashMap;
-// use std::io;
+// use std::error::Error as StdError;
+use std::io;
+// use std::result::Result as StdResult;
+// use std::sync::Arc;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// use bytes::Bytes;
-// use futures::executor::block_on;
+use bytes::Bytes;
+use futures::executor::block_on;
 // use futures::task::SpawnExt;
-// use futures::{channel::mpsc, SinkExt, Stream};
-
-// use fp_rust::common::shared_thread_pool;
+use futures::{channel::mpsc as futureMpsc, SinkExt, Stream};
 
 /*
 `PathParam` Path params for API usages
@@ -48,52 +49,56 @@ macro_rules! hash_map_string {
 Credit: https://stackoverflow.com/users/155423/shepmaster
 From: https://stackoverflow.com/questions/56435409/how-do-i-stream-a-hyper-requests-body-from-a-slow-processing-side-thread-that-p
 */
-/*
-pub struct WriteForStream<T>(pub mpsc::Sender<T>);
+//*
+pub struct WriteForStream(pub futureMpsc::Sender<Bytes>);
 
-impl<T> io::Write for WriteForStream<T>
+impl io::Write for WriteForStream
 where
-    T: for<'a> From<&'a [u8]> + Send + Sync + 'static,
+// T: for<'a> From<&'a [u8]> + Send + Sync + 'static,
 {
     fn write(&mut self, d: &[u8]) -> io::Result<usize> {
         let len = d.len();
         let mut future = self.0.clone();
         let d = Bytes::from(d.to_vec());
-        shared_thread_pool()
-            .inner
-            .lock()
-            .unwrap()
-            .spawn_with_handle(async move {
-                match future.send(d.as_ref().into()).await {
-                    Err(e) => println!("Error: WriteForStream send -> {:?}", e),
-                    _ => {}
-                };
-            })
-            .map(|_| len)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+
+        block_on(async {
+            // tokio::spawn(async move {
+            // println!("WriteForStream write content: {:?}", d.clone());
+            match future.send(d).await {
+                Err(e) => {
+                    println!("Error: WriteForStream send -> {:?}", e);
+                    let _ = future.close().await;
+
+                    return Ok(0);
+                }
+                _ => {}
+            };
+            Ok(len)
+        })
     }
 
     fn flush(&mut self) -> io::Result<()> {
         let mut future = self.0.clone();
-        shared_thread_pool()
-            .inner
-            .lock()
-            .unwrap()
-            .spawn_with_handle(async move {
-                match future.flush().await {
-                    Err(e) => println!("Error: WriteForStream flush -> {:?}", e),
-                    _ => {}
-                };
-            })
-            .map(|_| ())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        block_on(async {
+            // tokio::spawn(async move {
+            match future.flush().await {
+                Err(e) => {
+                    println!("Error: WriteForStream flush -> {:?}", e);
+                    let _ = future.close().await;
+
+                    return Ok(());
+                }
+                _ => {}
+            };
+            // println!("WriteForStream flush");
+            Ok(())
+        })
     }
 }
-
-pub fn make_stream<T>() -> (mpsc::Sender<T>, impl Stream<Item = T>) {
-    mpsc::channel(10)
+// */
+pub fn make_stream<T>() -> (futureMpsc::Sender<T>, impl Stream<Item = T>) {
+    futureMpsc::channel(10)
 }
-*/
 
 pub fn generate_id() -> String {
     let since_the_epoch = SystemTime::now()
