@@ -1,7 +1,6 @@
 // Crates
 
 extern crate bytes;
-extern crate fp_rust;
 extern crate futures;
 extern crate http;
 extern crate url;
@@ -10,6 +9,9 @@ extern crate url;
 extern crate hyper;
 #[cfg(feature = "for_hyper")]
 extern crate tokio;
+
+#[cfg(feature = "for_ureq")]
+extern crate fp_rust;
 
 #[cfg(feature = "multipart")]
 extern crate formdata;
