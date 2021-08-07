@@ -5,13 +5,17 @@ In this module there're implementations & tests of `SimpleHTTP`.
 use std::collections::VecDeque;
 use std::error::Error as StdError;
 use std::future::Future;
-use std::io::Read;
+use std::io::{self, Read, Write};
 use std::pin::Pin;
 use std::result::Result as StdResult;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
+use std::thread;
 
 // use futures::TryStreamExt;
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use futures::executor::ThreadPool;
 use futures::prelude::*;
 use futures::stream;
@@ -41,6 +45,125 @@ use multer;
 use multer::Multipart;
 
 pub const CONTENT_TYPE: &'static str = "content-type";
+
+#[derive(Clone)]
+pub struct WriteForBody {
+    // pub Box<Sender>
+    pub cached: Arc<Mutex<VecDeque<Bytes>>>,
+    pub alive: Arc<Mutex<AtomicBool>>,
+}
+
+impl WriteForBody {
+    pub fn close(&self) {
+        self.alive.lock().unwrap().store(false, Ordering::SeqCst);
+    }
+}
+
+impl Read for WriteForBody {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        {
+            if !self.alive.lock().unwrap().load(Ordering::SeqCst) {
+                return Ok(0);
+            }
+        }
+
+        {
+            let mut cached = self.cached.lock().unwrap();
+            if cached.is_empty() {
+                return Ok(0);
+            }
+
+            let item = cached.pop_front();
+            if let Some(item) = item {
+                // let len = item.len();
+                match item.reader().read(buf) {
+                    Ok(len) => return Ok(len),
+                    Err(e) => return Err(e),
+                }
+            }
+
+            return Ok(0);
+        }
+    }
+}
+impl Write for WriteForBody {
+    fn write(&mut self, d: &[u8]) -> io::Result<usize> {
+        let len = d.len();
+        println!("WriteForBody write len: {:?}", len);
+        if len <= 0 {
+            return Ok(len);
+        }
+        let d = Bytes::from(d.to_vec());
+        println!("WriteForBody write content: {:?}", d.clone());
+
+        {
+            let mut cached = self.cached.lock().unwrap();
+            cached.push_back(d);
+            cached.reserve_exact(10);
+        }
+
+        /*
+        match self.0.try_send_data(d) {
+            Ok(_) => {
+                println!("WriteForBody write ok");
+            }
+            Err(_) => {
+                println!("WriteForBody write error");
+            }
+        }
+        */
+        Ok(len)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        println!("flush ok");
+        Ok(())
+    }
+}
+
+#[cfg(feature = "multipart")]
+#[derive(Debug, Clone)]
+/// MultipartSerializerForStream Serialize the multipart body (for put/post/patch etc)
+pub struct MultipartSerializerForStream {
+    // NOTE: It can't be Copy because of this one:
+    thread_pool: Option<Arc<ThreadPool>>,
+}
+#[cfg(feature = "multipart")]
+impl BodySerializer<FormData, (String, Box<dyn Read + Send + Sync>)>
+    for MultipartSerializerForStream
+where
+// B: HttpBody + Send + 'static,
+// B: From<Body>,
+// B::Data: Send,
+// B::Error: Into<Box<dyn StdError + Send + Sync>>,
+{
+    fn encode(
+        &self,
+        origin: FormData,
+    ) -> StdResult<(String, Box<dyn Read + Send + Sync>), Box<dyn StdError>> {
+        let boundary = formdata::generate_boundary();
+        let boundary_thread = boundary.clone();
+
+        let data = WriteForBody {
+            cached: Arc::new(Mutex::new(VecDeque::new())),
+            alive: Arc::new(Mutex::new(AtomicBool::new(true))),
+        };
+        let mut data_thread = data.clone();
+
+        let _ = thread::spawn(move || {
+            match formdata::write_formdata(&mut data_thread, &boundary_thread, &origin) {
+                Err(e) => println!("Error -> write_formdata {:?}", e),
+                _ => {}
+            };
+        });
+        let content_type = get_content_type_from_multipart_boundary(boundary)?;
+
+        Ok((content_type, Box::new(data)))
+    }
+}
+#[cfg(feature = "multipart")]
+pub const DEFAULT_MULTIPART_SERIALIZER_FOR_STREAM: MultipartSerializerForStream =
+    MultipartSerializerForStream { thread_pool: None };
 
 pub struct UreqClient {
     pub agent: Agent,

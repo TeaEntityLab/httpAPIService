@@ -39,7 +39,7 @@ async fn test_simple_api_for_readme_md() {
     let json_deserializer = Arc::new(DEFAULT_SERDE_JSON_DESERIALIZER);
     let return_type_marker = &Product::default();
 
-    let common_api = bind_ureq::CommonAPI::new_for_hyper();
+    let common_api = bind_ureq::CommonAPI::new_for_ureq();
     let mut base_service_setter = common_api.as_base_service_setter();
     let base_service_shared = common_api.as_base_service_shared();
 
@@ -51,7 +51,7 @@ async fn test_simple_api_for_readme_md() {
     // Add common headers for Authentication or other usages
     let mut header_map = match base_service_setter.get_default_header() {
         Some(header) => header,
-        None => HeaderMap::new(),
+        None => Vec::new(),
     };
     header_map = bind_ureq::add_header_authentication_bearer(header_map, "MY_TOKEN")
         .ok()
@@ -87,7 +87,7 @@ async fn test_simple_api_for_readme_md() {
 
     let api_post_product = base_service_shared.make_api_has_body(
         base_service_shared.clone(),
-        Method::POST,
+        "POST".to_string(),
         "/products/{id}",
         "application/json",
         json_serializer.clone(),
@@ -119,7 +119,7 @@ async fn test_simple_api_for_readme_md() {
     // POST make_api_multipart
     let api_post_multipart = base_service_shared.make_api_multipart(
         base_service_shared.clone(),
-        Method::POST,
+        "POST".to_string(),
         "/form",
         json_deserializer.clone(),
         return_type_marker,
@@ -142,7 +142,7 @@ async fn test_simple_api_common() {
     use std::sync::Arc;
 
     use hyper::service::{make_service_fn, service_fn};
-    use hyper::{body, Body, HeaderMap, Method, Request, Response, Server};
+    use hyper::{body, Body, Method, Request, Response, Server};
     use serde::{Deserialize, Serialize};
 
     use fp_rust::sync::CountDownLatch;
@@ -254,7 +254,7 @@ async fn test_simple_api_common() {
     req.read(&mut [0; 256]).unwrap();
     */
 
-    let common_api = bind_ureq::CommonAPI::new_for_hyper();
+    let common_api = bind_ureq::CommonAPI::new_for_ureq();
     let mut base_service_setter = common_api.as_base_service_setter();
     let base_service_shared = common_api.as_base_service_shared();
     base_service_setter.set_base_url(
@@ -268,7 +268,7 @@ async fn test_simple_api_common() {
     let mut header_map = if let Some(header) = base_service_setter.get_default_header() {
         header
     } else {
-        HeaderMap::new()
+        Vec::new()
     };
     header_map = add_header_authentication_bearer(header_map, "MY_TOKEN")
         .ok()
@@ -288,7 +288,7 @@ async fn test_simple_api_common() {
     {
         let api_get_products = base_service_setter.make_api_response_only(
             base_service_shared.clone(),
-            Method::GET,
+            "GET".to_string(),
             "/products",
             json_deserializer.clone(),
             return_type_marker,
@@ -302,7 +302,7 @@ async fn test_simple_api_common() {
         let serialized = serde_json::to_string(model.as_ref()).unwrap();
         println!("serialized: {:?}", serialized);
         assert_eq!(
-            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: GET, uri: /products, version: HTTP/1.1, headers: {\\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"host\\\": \\\"127.0.0.1:3400\\\"} }\"}",
+            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: GET, uri: /products, version: HTTP/1.1, headers: {\\\"host\\\": \\\"127.0.0.1:3400\\\", \\\"user-agent\\\": \\\"ureq/2.1.1\\\", \\\"accept\\\": \\\"*/*\\\", \\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"content-length\\\": \\\"0\\\"} }\"}",
             serialized
         );
     }
@@ -310,7 +310,7 @@ async fn test_simple_api_common() {
     {
         let api_delete_product = base_service_setter.make_api_no_body(
             base_service_shared.clone(),
-            Method::DELETE,
+            "DELETE".to_string(),
             "/products/{id}",
             json_deserializer.clone(),
             return_type_marker,
@@ -331,7 +331,7 @@ async fn test_simple_api_common() {
         let serialized = serde_json::to_string(model.as_ref()).unwrap();
         println!("serialized: {:?}", serialized);
         assert_eq!(
-            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: DELETE, uri: /products/3?soft=true, version: HTTP/1.1, headers: {\\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"host\\\": \\\"127.0.0.1:3400\\\"} }\"}",
+            "{\"name\":\"Baxter from server\",\"age\":\"1 month from server\",\"meta\":\"Parts { method: DELETE, uri: /products/3?soft=true, version: HTTP/1.1, headers: {\\\"host\\\": \\\"127.0.0.1:3400\\\", \\\"user-agent\\\": \\\"ureq/2.1.1\\\", \\\"accept\\\": \\\"*/*\\\", \\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"content-length\\\": \\\"0\\\"} }\"}",
             serialized
         );
     }
@@ -339,7 +339,7 @@ async fn test_simple_api_common() {
     {
         let api_put_product = base_service_setter.make_api_has_body(
             base_service_shared.clone(),
-            Method::PUT,
+            "PUT".to_string(),
             "/products/{id}",
             "application/json",
             json_serializer.clone(),
@@ -363,7 +363,7 @@ async fn test_simple_api_common() {
         let serialized = serde_json::to_string(model.as_ref()).unwrap();
         println!("serialized: {:?}", serialized);
         assert_eq!(
-            "{\"name\":\"Alien  modified\",\"age\":\"3 years\",\"meta\":\"Parts { method: PUT, uri: /products/5, version: HTTP/1.1, headers: {\\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"content-type\\\": \\\"application/json\\\", \\\"host\\\": \\\"127.0.0.1:3400\\\", \\\"content-length\\\": \\\"46\\\"} }\"}",
+            "{\"name\":\"Alien  modified\",\"age\":\"3 years\",\"meta\":\"Parts { method: PUT, uri: /products/5, version: HTTP/1.1, headers: {\\\"host\\\": \\\"127.0.0.1:3400\\\", \\\"user-agent\\\": \\\"ureq/2.1.1\\\", \\\"accept\\\": \\\"*/*\\\", \\\"authorization\\\": \\\"Bearer MY_TOKEN\\\", \\\"content-type\\\": \\\"application/json\\\", \\\"content-length\\\": \\\"46\\\"} }\"}",
             serialized
         );
     }
@@ -389,11 +389,11 @@ async fn test_simple_api_formdata() {
     use formdata::FormData;
     use futures::executor::block_on;
     use hyper::service::{make_service_fn, service_fn};
-    use hyper::{Body, Method, Request, Response, Server};
+    use hyper::{Body, Request, Response, Server};
 
     use fp_rust::sync::CountDownLatch;
     use http_api_service::bind_ureq;
-    use http_api_service::bind_ureq::body_to_multipart;
+    use http_api_service::bind_hyper::body_to_multipart;
     use http_api_service::simple_api;
     use http_api_service::simple_http;
 
@@ -485,7 +485,7 @@ async fn test_simple_api_formdata() {
         files: vec![],
     };
 
-    let common_api = bind_ureq::CommonAPI::new_for_hyper();
+    let common_api = bind_ureq::CommonAPI::new_for_ureq();
     let base_service_setter = common_api.as_base_service_setter();
     let base_service_shared = common_api.as_base_service_shared();
 
@@ -498,7 +498,7 @@ async fn test_simple_api_formdata() {
     // POST make_api_multipart
     let api_post_multipart = base_service_setter.make_api_multipart(
         base_service_shared.clone(),
-        Method::POST,
+        "POST".to_string(),
         "/form",
         Arc::new(simple_api::DEFAULT_DUMMY_BYPASS_DESERIALIZER),
         &bytes::Bytes::new(),

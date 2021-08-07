@@ -25,7 +25,7 @@ default = [
 ]
 pure = []
 for_hyper = [ "hyper", "tokio", "http" ]
-for_ureq = [ "ureq" ]
+for_ureq = [ "ureq", "fp_rust", ]
 multipart = [ "formdata", "multer", "mime" ]
 for_serde = [ "serde", "serde_json" ]
 
@@ -71,7 +71,7 @@ required-features = ["test_runtime"]
 
 [[test]]
 name = "ureq_simple_api"
-path = "tests/ureq_simple_http.rs"
+path = "tests/ureq_simple_api.rs"
 required-features = ["test_runtime"]
 
 [[test]]
