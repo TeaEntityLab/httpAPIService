@@ -1,6 +1,6 @@
 [package]
 name = "http_api_service"
-version = "0.3.1"
+version = "0.3.2"
 license = "MIT"
 authors = ["JunYi JohnTeee Lee <johnteee@gmail.com>"]
 edition = "2018"
@@ -34,7 +34,7 @@ test_runtime = [
 "multipart", "for_serde",
 
 "hyper/full",
-"fp_rust",
+"fp_rust/sync",
 ]
 
 [dependencies]
@@ -62,7 +62,7 @@ serde = { version = "^1.0", features = ["derive"], optional = true }
 serde_json = { version = "^1.0", optional = true }
 
 # test_runtime
-fp_rust={ version = "^0.2.4", features = ["for_futures"], optional = true }
+fp_rust={ version = "^0.3.5", default-features = false, features = ["for_futures"], optional = true }
 
 [[test]]
 name = "ureq_simple_http"

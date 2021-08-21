@@ -162,7 +162,8 @@ where
     }
 }
 #[cfg(feature = "multipart")]
-pub const DEFAULT_MULTIPART_SERIALIZER_FOR_STREAM: MultipartSerializerForStream =
+#[allow(dead_code)]
+pub(crate) const DEFAULT_MULTIPART_SERIALIZER_FOR_STREAM: MultipartSerializerForStream =
     MultipartSerializerForStream { thread_pool: None };
 
 pub struct UreqClient {

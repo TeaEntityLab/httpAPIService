@@ -230,7 +230,8 @@ where
     }
 }
 #[cfg(feature = "multipart")]
-pub const DEFAULT_MULTIPART_SERIALIZER_FOR_STREAM: MultipartSerializerForStream =
+#[allow(dead_code)]
+pub(crate) const DEFAULT_MULTIPART_SERIALIZER_FOR_STREAM: MultipartSerializerForStream =
     MultipartSerializerForStream { thread_pool: None };
 
 pub struct HyperClient<C, B> {
@@ -564,7 +565,8 @@ impl<C>
 {
     #[cfg(feature = "multipart")]
     // NOTE: Experimental
-    pub fn make_api_multipart_for_stream<R>(
+    #[allow(dead_code)]
+    pub(crate) fn make_api_multipart_for_stream<R>(
         &self,
         base: Arc<
             dyn BaseService<
@@ -616,7 +618,7 @@ impl<C>
     where
         Body: From<Bytes>,
     {
-        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER_FOR_STREAM.encode(body)?;
+        let (content_type, body) = DEFAULT_MULTIPART_SERIALIZER.encode(body)?;
         self._call_common(
             method,
             header,

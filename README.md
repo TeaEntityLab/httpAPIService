@@ -43,7 +43,7 @@ Thus I implemented httpAPIService. I hope you would like it :)
 
 Note:
 * If you want to bypass
-  * Serialization, you can use *`DummyBypassSerializer`*
+  * Serialization, you can use *`DummyBypassSerializerForBody`*/*`DummyBypassSerializerForBytes`*/*`DummyBypassSerializerForBytesToBody`*
   * Deserialization, you can use *`DummyBypassDeserializer`*
 
 # Dependencies

@@ -48,9 +48,20 @@ pub const DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES: DummyBypassSerializerForByt
     DummyBypassSerializerForBytes {};
 
 #[derive(Debug, Clone, Copy)]
-// DummyBypassSerializer Dummy bypass the body data, do nothing (for put/post/patch etc)
-pub struct DummyBypassSerializer {}
-impl<B> BodySerializer<Bytes, B> for DummyBypassSerializer
+// DummyBypassSerializerForBody Dummy bypass the body data, do nothing (for put/post/patch etc)
+pub struct DummyBypassSerializerForBody {}
+impl<B> BodySerializer<B, B> for DummyBypassSerializerForBody {
+    fn encode(&self, origin: B) -> StdResult<B, Box<dyn StdError>> {
+        Ok(origin)
+    }
+}
+pub const DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BODY: DummyBypassSerializerForBody =
+    DummyBypassSerializerForBody {};
+
+#[derive(Debug, Clone, Copy)]
+// DummyBypassSerializerForBytesToBody Dummy bypass the body data, do nothing (for put/post/patch etc)
+pub struct DummyBypassSerializerForBytesToBody {}
+impl<B> BodySerializer<Bytes, B> for DummyBypassSerializerForBytesToBody
 where
     B: From<Bytes>,
 {
@@ -58,7 +69,8 @@ where
         Ok(B::from(origin))
     }
 }
-pub const DEFAULT_DUMMY_BYPASS_SERIALIZER: DummyBypassSerializer = DummyBypassSerializer {};
+pub const DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES_TO_BODY: DummyBypassSerializerForBytesToBody =
+    DummyBypassSerializerForBytesToBody {};
 
 #[derive(Debug, Clone, Copy)]
 /*
