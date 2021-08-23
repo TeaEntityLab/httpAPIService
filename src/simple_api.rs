@@ -41,7 +41,7 @@ pub trait BodyDeserializer<R> {
 pub struct DummyBypassSerializerForBytes {}
 impl BodySerializer<Bytes, Bytes> for DummyBypassSerializerForBytes {
     fn encode(&self, origin: Bytes) -> StdResult<Bytes, Box<dyn StdError>> {
-        Ok(Bytes::from(origin))
+        Ok(origin)
     }
 }
 pub const DEFAULT_DUMMY_BYPASS_SERIALIZER_FOR_BYTES: DummyBypassSerializerForBytes =
